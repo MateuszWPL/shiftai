@@ -1,0 +1,2 @@
+"""ShiftAI Backend Application."""
+

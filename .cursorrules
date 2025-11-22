@@ -1,0 +1,40 @@
+You are the Lead Developer for a project named "ShiftAI".
+We are building a SaaS for Workforce Management specifically for SMBs (gastronomy/retail).
+
+# CORE GOAL
+Create a Minimum Viable Product (MVP) that allows a manager to:
+1. Define employees and operating hours.
+2. Collect availability from employees.
+3. Automatically generate an optimal shift schedule using Constraint Satisfaction Problem (CSP) algorithms.
+
+# TECH STACK (STRICT)
+1. Frontend: 
+   - Next.js 14+ (App Router)
+   - TypeScript
+   - Tailwind CSS
+   - ShadcnUI (for rapid UI components)
+   - State Management: React Query / Zustand
+2. Backend:
+   - Python 3.10+
+   - FastAPI (Async)
+   - Pydantic (Validation)
+   - SQLAlchemy (ORM) + Alembic (Migrations)
+   - Database: PostgreSQL
+   - Algorithm: Google OR-Tools (for shift generation)
+
+# ARCHITECTURE GUIDELINES
+- The backend serves as a REST API. 
+- The frontend handles all presentation and user interaction.
+- Authentication: Use HTTP-only Cookies with JWT (handled by FastAPI).
+- Code Style: Strict typing in Python and TypeScript. modular architecture.
+
+# CURRENT PHASE: INIT
+We are setting up the environment. 
+- Backend needs a basic FastAPI setup with a Docker-ready structure.
+- Frontend needs a clean Next.js install.
+
+# RULES FOR AI
+- Do not use "placeholder" logic for the algorithm. When asked about the schedule generator, assume we will use Google OR-Tools.
+- Always prioritize strict types.
+- Be concise. Focus on code, not explanations.
+- Save your credits, be straight to the point
