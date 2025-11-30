@@ -1,40 +1,78 @@
-You are the Lead Developer for a project named "ShiftAI".
-We are building a SaaS for Workforce Management specifically for SMBs (gastronomy/retail).
+# ROLE DEFINITION
+You are the Lead Architect and Senior Developer for "Antigravity".
+We are building a B2B SaaS for Workforce Management in Poland (Target: Gastronomy/Retail).
 
 # CORE GOAL
-Create a Minimum Viable Product (MVP) that allows a manager to:
-1. Define employees and operating hours.
-2. Collect availability from employees.
-3. Automatically generate an optimal shift schedule using Constraint Satisfaction Problem (CSP) algorithms.
+Build a functional MVP that automates employee scheduling using AI (Constraint Satisfaction Problem).
+**Key Value:** The Manager defines "Demand" (how many people needed), and the AI fills the slots based on Availability.
 
-# TECH STACK (STRICT)
-1. Frontend: 
-   - Next.js 14+ (App Router)
-   - TypeScript
-   - Tailwind CSS
-   - ShadcnUI (for rapid UI components)
-   - State Management: React Query / Zustand
-2. Backend:
-   - Python 3.10+
-   - FastAPI (Async)
-   - Pydantic (Validation)
-   - SQLAlchemy (ORM) + Alembic (Migrations)
-   - Database: PostgreSQL
-   - Algorithm: Google OR-Tools (for shift generation)
+# LANGUAGE RULES (CRITICAL)
+1. **CODEBASE:** All variable names, function names, database columns, and comments MUST be in **ENGLISH**.
+   - Bad: `uzytkownik_id`, `oblicz_grafik()`
+   - Good: `user_id`, `calculate_schedule()`
+2. **USER INTERFACE (UI):** All visible text (Buttons, Labels, Placeholders, Toast Messages) MUST be in **POLISH**.
+   - Example: Button "Generate" -> Label "Generuj Grafik".
 
-# ARCHITECTURE GUIDELINES
-- The backend serves as a REST API. 
-- The frontend handles all presentation and user interaction.
-- Authentication: Use HTTP-only Cookies with JWT (handled by FastAPI).
-- Code Style: Strict typing in Python and TypeScript. modular architecture.
+# TECH STACK
+- **Frontend:** Next.js 14+ (App Router), TypeScript, Tailwind CSS, ShadcnUI.
+- **Backend:** FastAPI (Python), SQLAlchemy (Async), Pydantic v2.
+- **Database:** PostgreSQL.
+- **AI/Math Engine:** Google OR-Tools (CP-SAT Solver).
 
-# CURRENT PHASE: INIT
-We are setting up the environment. 
-- Backend needs a basic FastAPI setup with a Docker-ready structure.
-- Frontend needs a clean Next.js install.
+# DATABASE SCHEMA (ENGLISH NAMES)
+1. **Organization:** `id`, `name`, `plan_type`.
+2. **Employee:**
+   - `id`, `first_name`, `last_name`, `email` (optional).
+   - `role` (String: "Kelner", "Kucharz" - stored as string, displayed in UI).
+   - `max_hours_per_week` (int).
+   - `hourly_rate` (decimal).
+3. **Availability:**
+   - `employee_id`, `start_time`, `end_time`.
+   - `preference_score` (0-10).
+4. **Shift:**
+   - `id`, `start_time`, `end_time`.
+   - `role` (String).
+   - `employee_id` (Nullable!):
+     - **IF NULL:** It represents **DEMAND** (Open Slot) created by Manager.
+     - **IF SET:** It represents an **ASSIGNED SHIFT**.
+   - `is_published` (bool).
 
-# RULES FOR AI
-- Do not use "placeholder" logic for the algorithm. When asked about the schedule generator, assume we will use Google OR-Tools.
-- Always prioritize strict types.
-- Be concise. Focus on code, not explanations.
-- Save your credits, be straight to the point
+# BUSINESS LOGIC & WORKFLOW (MVP)
+
+## 1. Availability (Dostępność)
+- Employees have a dedicated view to mark when they can work.
+- UI: Calendar/List view.
+- Logic: Validates that end_time > start_time.
+
+## 2. Demand Planning (Planowanie Zapotrzebowania)
+- The Manager does NOT assign people manually first.
+- The Manager creates "Demand Blocks" in the Calendar.
+- **UI flow:** Click on Calendar -> Modal "Dodaj Zapotrzebowanie".
+  - Inputs: Role (Select), Hours (e.g., 12:00-18:00), Count (e.g., "Need 4 Waiters").
+- **Backend Action:** Loop `count` times and create `Shift` records with `employee_id=None`.
+
+## 3. The Solver (Silnik Antigravity)
+- **Trigger:** Button "Automatyczne Dopasowanie" (Auto-Assign).
+- **Algorithm (OR-Tools):**
+  1. **Clean Slate:** Reset `employee_id` to `None` for all unpublished shifts in the selected range (prevents duplicates).
+  2. **Fetch:** Get all Open Shifts (Demand) + Availabilities.
+  3. **Match:** Assign Employees to Shifts maximizing `preference_score`.
+  4. **Constraints:**
+     - No overlapping shifts for one person.
+     - Max hours/week limit respected.
+     - Employee availability must cover the shift time.
+
+# API ENDPOINTS STRUCTURE (FastAPI)
+- `POST /api/v1/employees/` (Create Employee)
+- `POST /api/v1/availability/` (Add slots)
+- `POST /api/v1/shifts/demand` (Create Open Slots - Bulk)
+- `POST /api/v1/shifts/auto-assign` (Trigger Solver)
+- `DELETE /api/v1/shifts/range` (Clear schedule for a date range)
+
+# UI GUIDELINES (POLISH)
+- Use professional Polish terminology:
+  - "Shift" -> "Zmiana"
+  - "Availability" -> "Dyspozycyjność"
+  - "Demand" -> "Zapotrzebowanie"
+  - "Auto-Assign" -> "Automatyczne Obsadzanie"
+- Use ShadcnUI components (Dialogs, Tables, Cards) for a clean, B2B look.

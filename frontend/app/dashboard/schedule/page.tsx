@@ -45,7 +45,7 @@ function DraggableShift({ shift, employeeName, formatTime }: DraggableShiftProps
       }`}
     >
       <div className={`text-xs font-medium ${isAssigned ? "text-blue-900 dark:text-blue-200" : "text-gray-700 dark:text-gray-300"}`}>
-        {isAssigned ? employeeName : `${shift.role} Needed`}
+        {isAssigned ? employeeName : `${shift.role} - Wakat`}
       </div>
       <div className={`mt-1 text-xs ${isAssigned ? "text-blue-700 dark:text-blue-300" : "text-gray-600 dark:text-gray-400"}`}>
         {formatTime(shift.start_time)} - {formatTime(shift.end_time)}
@@ -84,7 +84,7 @@ function DroppableDay({ day, shifts, employees, formatTime, getEmployeeName, onC
     >
       {shifts.length === 0 ? (
         <p className="text-xs text-gray-400 dark:text-gray-600 text-center mt-4">
-          No shifts
+          Brak zmian
         </p>
       ) : (
         <div className="space-y-2">
@@ -130,7 +130,7 @@ export default function SchedulePage() {
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to fetch shifts. Please try again."
+          : "Nie udało się pobrać zmian. Spróbuj ponownie."
       );
     } finally {
       setLoading(false);
@@ -223,11 +223,11 @@ export default function SchedulePage() {
       };
 
       const result = await shiftsApi.autoAssign(ORGANIZATION_ID, requestData);
-      showToast(`Auto-assigned ${result.length} shifts successfully!`, "success");
+      showToast(`Automatycznie przypisano ${result.length} zmian!`, "success");
       await fetchShifts();
     } catch (err) {
       console.error("Error auto-assigning shifts:", err);
-      let errorMessage = "Failed to auto-assign shifts. Please try again.";
+      let errorMessage = "Nie udało się automatycznie przypisać zmian. Spróbuj ponownie.";
       if (err instanceof ApiClientError) {
         if (typeof err.data.detail === 'string') {
           errorMessage = err.data.detail;
@@ -249,8 +249,8 @@ export default function SchedulePage() {
   const handleClearDay = useCallback(async (dayIndex?: number) => {
     const targetDay = dayIndex !== undefined ? weekDays[dayIndex] : null;
     const confirmMessage = targetDay
-      ? `Are you sure you want to clear all shifts for ${format(targetDay, "EEEE, MMM d")}? This cannot be undone.`
-      : "Are you sure you want to clear all shifts for this week? This cannot be undone.";
+      ? `Czy na pewno chcesz usunąć wszystkie zmiany dla dnia ${format(targetDay, "EEEE, d MMM")}? Tej operacji nie można cofnąć.`
+      : "Czy na pewno chcesz usunąć wszystkie zmiany z tego tygodnia? Tej operacji nie można cofnąć.";
     
     if (!confirm(confirmMessage)) return;
 
@@ -294,7 +294,7 @@ export default function SchedulePage() {
       };
 
       await shiftsApi.deleteRange(ORGANIZATION_ID, requestData);
-      showToast(targetDay ? `Cleared all shifts for ${format(targetDay, "EEEE")}` : "Cleared all shifts for this week", "success");
+      showToast(targetDay ? `Wyczyszczono zmiany dla dnia ${format(targetDay, "EEEE")}` : "Wyczyszczono zmiany z całego tygodnia", "success");
       
       setShifts(prev => prev.filter(shift => {
         const shiftDate = parseISO(shift.start_time);
@@ -307,8 +307,8 @@ export default function SchedulePage() {
       setTimeout(() => fetchShifts().catch(console.error), 300);
     } catch (err) {
       console.error("Error clearing shifts:", err);
-      setError("Failed to clear shifts.");
-      showToast("Failed to clear shifts.", "error");
+      setError("Nie udało się wyczyścić zmian.");
+      showToast("Nie udało się wyczyścić zmian.", "error");
       fetchShifts();
     } finally {
       setClearing(false);
@@ -316,9 +316,9 @@ export default function SchedulePage() {
   }, [weekStart, weekDays, fetchShifts, showToast]);
 
   const getEmployeeName = useCallback((employeeId: number | null): string => {
-    if (employeeId === null) return "Open Shift";
+    if (employeeId === null) return "Wakat";
     const employee = employees.find((emp) => emp.id === employeeId);
-    return employee ? `${employee.first_name} ${employee.last_name}` : `Employee #${employeeId}`;
+    return employee ? `${employee.first_name} ${employee.last_name}` : `Pracownik #${employeeId}`;
   }, [employees]);
 
   const formatTime = useCallback((dateString: string): string => {
@@ -381,10 +381,10 @@ export default function SchedulePage() {
         end_time: newEnd.toISOString(),
       });
       
-      showToast("Shift moved successfully", "success");
+      showToast("Przesunięto zmianę pomyślnie", "success");
     } catch (err) {
       console.error("Error moving shift:", err);
-      showToast("Failed to move shift", "error");
+      showToast("Nie udało się przesunąć zmiany", "error");
       fetchShifts(); // Revert on error
     }
   };
@@ -399,16 +399,16 @@ export default function SchedulePage() {
     <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">Schedule</h1>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Plan staffing demand and auto-assign shifts</p>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">Grafik Pracy</h1>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Planuj zapotrzebowanie i automatycznie przydzielaj zmiany</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setDemandDialogOpen(true)} variant="outline">Add Demand</Button>
+          <Button onClick={() => setDemandDialogOpen(true)} variant="outline">Dodaj Zapotrzebowanie</Button>
           <Button onClick={() => handleClearDay()} disabled={clearing} variant="outline">
-            {clearing ? "Clearing..." : "Clear Week"}
+            {clearing ? "Czyszczenie..." : "Wyczyść Tydzień"}
           </Button>
           <Button onClick={handleAutoAssign} disabled={autoAssigning}>
-            {autoAssigning ? "Assigning..." : "Auto-Assign"}
+            {autoAssigning ? "Przydzielanie..." : "Auto-Przydział"}
           </Button>
         </div>
       </div>
@@ -419,7 +419,7 @@ export default function SchedulePage() {
         onSuccess={async (newShifts) => {
           if (newShifts && newShifts.length > 0) setShifts(prev => [...prev, ...newShifts]);
           fetchShifts().catch(console.error);
-          showToast("Demand created successfully!", "success");
+          showToast("Zapotrzebowanie utworzone pomyślnie!", "success");
         }}
         organizationId={ORGANIZATION_ID}
         weekStartDate={weekStart}
@@ -447,18 +447,18 @@ export default function SchedulePage() {
         <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
             <Button variant="outline" size="sm" onClick={handlePrevWeek} className="flex items-center gap-1">
-              <ChevronLeft className="h-4 w-4" /> Previous Week
+              <ChevronLeft className="h-4 w-4" /> Poprzedni Tydzień
             </Button>
             <div className="text-center">
               <div className="text-sm font-medium text-gray-900 dark:text-gray-50">
                 {format(weekStart, "MMM d")} - {format(addDays(weekStart, 6), "MMM d, yyyy")}
               </div>
               <Button variant="ghost" size="sm" onClick={handleToday} className="text-xs text-gray-500 hover:text-gray-700">
-                Go to Current Week
+                Wróć do obecnego tygodnia
               </Button>
             </div>
             <Button variant="outline" size="sm" onClick={handleNextWeek} className="flex items-center gap-1">
-              Next Week <ChevronRight className="h-4 w-4" />
+              Następny Tydzień <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
           
@@ -479,7 +479,7 @@ export default function SchedulePage() {
                           onClick={() => handleClearDay(idx)}
                           disabled={clearing}
                           className="h-6 w-6 p-0 text-xs text-gray-400 hover:text-red-600"
-                          title={`Clear ${format(day, "EEEE")}`}
+                          title={`Wyczyść ${format(day, "EEEE")}`}
                         >
                           ×
                         </Button>
@@ -523,7 +523,7 @@ export default function SchedulePage() {
                       : "border-gray-300 bg-gray-100"
                   }`}>
                   <div className="text-xs font-medium">
-                    {activeDragShift.employee_id !== null ? getEmployeeName(activeDragShift.employee_id) : `${activeDragShift.role} Needed`}
+                    {activeDragShift.employee_id !== null ? getEmployeeName(activeDragShift.employee_id) : `${activeDragShift.role} - Wakat`}
                   </div>
                   <div className="mt-1 text-xs">
                     {formatTime(activeDragShift.start_time)} - {formatTime(activeDragShift.end_time)}
