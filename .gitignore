@@ -1,9 +1,14 @@
+# Internal / Private
+PROJECT_STATUS.md
+.cursorrules
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 venv/
 .env
+backend/.env
 
 # Node.js
 node_modules/
@@ -13,6 +18,7 @@ yarn-error.log
 out/
 build/
 dist/
+frontend/.env
 
 # IDE
 .vscode/
