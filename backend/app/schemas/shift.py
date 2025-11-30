@@ -119,6 +119,24 @@ class DeleteRangeRequest(BaseModel):
         return self
 
 
+class ShiftUpdateRequest(BaseModel):
+    """Schema for updating an existing shift."""
+    
+    start_time: Optional[datetime] = Field(None, description="Shift start time (UTC)")
+    end_time: Optional[datetime] = Field(None, description="Shift end time (UTC)")
+    role: Optional[str] = Field(None, max_length=100, description="Required role")
+    employee_id: Optional[int] = Field(None, description="Assigned employee ID (or None to unassign)")
+    
+    model_config = ConfigDict(from_attributes=True)
+    
+    @model_validator(mode='after')
+    def validate_time_range(self) -> 'ShiftUpdateRequest':
+        """Validate that end_time is after start_time if both are provided."""
+        if self.start_time and self.end_time and self.end_time <= self.start_time:
+            raise ValueError("end_time must be after start_time")
+        return self
+
+
 class ShiftResponse(BaseModel):
     """Schema for shift response."""
     

@@ -16,6 +16,7 @@ from app.schemas.shift import (
     AutoAssignRequest,
     DeleteRangeRequest,
     ShiftResponse,
+    ShiftUpdateRequest,
 )
 from app.services.solver import ShiftSolver
 
@@ -95,7 +96,7 @@ async def create_weekly_demand(
     target_date_normalized = target_date_utc.replace(hour=0, minute=0, second=0, microsecond=0)
     
     # Create open shifts for each time slot
-    created_shifts = []
+    shifts_to_create = []
     for time_slot in request.time_slots:
         # Create datetime objects for this day in UTC
         # Use the normalized date and add hours/minutes
@@ -121,14 +122,22 @@ async def create_weekly_demand(
                 role=time_slot.role,
                 is_published=False,
             )
-            db.add(db_shift)
-            await db.flush()
-            await db.refresh(db_shift)
-            created_shifts.append(db_shift)
+            shifts_to_create.append(db_shift)
+            
+    # Bulk insert
+    if shifts_to_create:
+        db.add_all(shifts_to_create)
+        await db.commit()
+        
+        # We need to refresh to get IDs, but for bulk operations it might be slow to refresh all.
+        # However, the response model expects ShiftResponse with IDs.
+        # For better performance with large batches, we might skip returning full objects or just return count.
+        # But to keep API contract, we'll try to refresh.
+        # A better approach for huge batches would be to return a summary, but for <100 items this is fine.
+        for shift in shifts_to_create:
+            await db.refresh(shift)
     
-    await db.commit()
-    
-    return [ShiftResponse.model_validate(shift) for shift in created_shifts]
+    return [ShiftResponse.model_validate(shift) for shift in shifts_to_create]
 
 
 @router.post("/auto-assign", response_model=List[ShiftResponse], status_code=status.HTTP_200_OK)
@@ -217,6 +226,10 @@ async def auto_assign_shifts(
     availabilities = availabilities_result.scalars().all()
     
     if not availabilities:
+        # It's possible to have no availability but still want to clear assignments or just check.
+        # But for auto-assign, we need availability.
+        # We'll return empty list instead of error to be more graceful? 
+        # No, user expects assignment, so error is appropriate if no one is available.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -231,12 +244,13 @@ async def auto_assign_shifts(
     shifts_needed = []
     shift_id_to_shift = {}
     for idx, open_shift in enumerate(open_shifts):
-        shift_id = idx
+        shift_id = idx # Use index as temporary ID for solver
         shifts_needed.append({
             'id': shift_id,
             'start': open_shift.start_time,
             'end': open_shift.end_time,
             'role': open_shift.role,
+            'db_id': open_shift.id # Keep track of real DB ID
         })
         shift_id_to_shift[shift_id] = open_shift
     
@@ -262,22 +276,168 @@ async def auto_assign_shifts(
         )
     
     # Step E: Update the shifts with the new employee_id assigned by AI
-    updated_shifts = []
-    for assignment in assignments:
-        employee_id = assignment['employee_id']
-        shift_id = assignment['shift_id']
-        open_shift = shift_id_to_shift[shift_id]
-        
-        open_shift.employee_id = employee_id
-        updated_shifts.append(open_shift)
+    # Handle potentially split shifts returned by solver
     
+    # First, collect all original shifts that were processed
+    processed_original_shift_ids = set()
+    
+    shifts_to_add = []
+    shifts_to_delete = [] # If we split a shift, we might want to delete the original or modify it.
+    # Actually, simpler strategy: 
+    # The solver returns a list of assignments. 
+    # If the assignment matches the original shift exactly, we update the employee_id.
+    # If the assignment is a split of the original shift, we need to:
+    # 1. Mark original shift for deletion (or update it to be the first segment)
+    # 2. Create new shifts for the other segments.
+    
+    # However, to avoid complex update logic, we can:
+    # 1. Delete ALL open shifts that were considered for assignment (we have their IDs).
+    # 2. Create NEW shifts based on the solver's output.
+    # But this changes IDs, which might be confusing if frontend tracks them.
+    # Let's stick to: Update if exact match, Delete+Create if split.
+    
+    # Wait, the current solver implementation (before my changes) doesn't split shifts.
+    # I am about to implement splitting in the solver.
+    # So I need to prepare this endpoint to handle the NEW solver output which might include splits.
+    
+    # Let's assume the solver returns 'original_shift_id' (which is our temp 'id') in the assignment.
+    
+    # For now, with current solver, it's 1-to-1. 
+    # I will update this endpoint to handle splits AFTER I update the solver. 
+    # But wait, I am in the "Backend Improvements" task which includes "Refactor solver.py".
+    # So I should update this endpoint NOW to be ready for the solver changes.
+    
+    # Let's implement a robust update strategy:
+    updated_shifts = []
+    
+    # We need to know which original shifts were "touched"
+    # The solver will return assignments.
+    # If an assignment covers the full duration of the original shift, it's a simple update.
+    # If it covers a part, it's a split.
+    
+    # Actually, the solver might return multiple assignments for a single original shift (if split between two people).
+    
+    # Let's look at what we need to do.
+    # We have `open_shifts` which are the DB objects.
+    # We have `assignments` from solver.
+    
+    # Map original_db_id -> list of assignments
+    assignments_by_db_id = {}
+    
+    for assignment in assignments:
+        # We need the solver to pass back the identifier we gave it.
+        # In shifts_needed we passed 'id' (index) and 'db_id'.
+        # The solver returns 'shift_id' which corresponds to the 'id' we passed.
+        
+        shift_idx = assignment['shift_id']
+        original_shift = shift_id_to_shift[shift_idx]
+        db_id = original_shift.id
+        
+        if db_id not in assignments_by_db_id:
+            assignments_by_db_id[db_id] = []
+        assignments_by_db_id[db_id].append(assignment)
+        
+    # Now process each original shift
+    for open_shift in open_shifts:
+        if open_shift.id in assignments_by_db_id:
+            shift_assignments = assignments_by_db_id[open_shift.id]
+            
+            # Sort assignments by start time
+            shift_assignments.sort(key=lambda x: x['start'])
+            
+            # If there's only one assignment and it matches the time exactly
+            if len(shift_assignments) == 1:
+                assign = shift_assignments[0]
+                if assign['start'] == open_shift.start_time and assign['end'] == open_shift.end_time:
+                    # Simple update
+                    open_shift.employee_id = assign['employee_id']
+                    updated_shifts.append(open_shift)
+                    continue
+            
+            # If we are here, it means we have splits or partial assignment (if we allow that)
+            # We will DELETE the original shift and CREATE new ones
+            await db.delete(open_shift)
+            
+            for assign in shift_assignments:
+                new_shift = Shift(
+                    employee_id=assign['employee_id'],
+                    start_time=assign['start'],
+                    end_time=assign['end'],
+                    role=open_shift.role,
+                    is_published=False
+                )
+                db.add(new_shift)
+                # We can't add to updated_shifts yet because it doesn't have an ID
+                # We'll collect them to refresh later? 
+                # Actually, we can just return the list of all shifts in the range at the end.
+                
+        else:
+            # Shift was not assigned (maybe no availability found for it?)
+            # Leave it as is (open)
+            updated_shifts.append(open_shift)
+
     await db.commit()
     
-    # Refresh all updated shifts
-    for shift in updated_shifts:
-        await db.refresh(shift)
+    # Re-fetch all shifts in the range to return the final state
+    # This ensures we return valid IDs for new shifts
+    final_shifts_result = await db.execute(
+        select(Shift).where(
+            and_(
+                Shift.start_time >= start_date_normalized,
+                Shift.start_time <= end_date_normalized,
+                or_(
+                    Shift.employee_id.in_(employee_ids),
+                    Shift.employee_id.is_(None),
+                )
+            )
+        ).order_by(Shift.start_time)
+    )
+    final_shifts = final_shifts_result.scalars().all()
     
+    return [ShiftResponse.model_validate(shift) for shift in final_shifts]
+
+
     return [ShiftResponse.model_validate(shift) for shift in updated_shifts]
+
+
+@router.put("/{shift_id}", response_model=ShiftResponse)
+async def update_shift(
+    shift_id: int,
+    shift_update: ShiftUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ShiftResponse:
+    """Update a shift."""
+    result = await db.execute(select(Shift).where(Shift.id == shift_id))
+    shift = result.scalar_one_or_none()
+    
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+        
+    # Update fields if provided
+    if shift_update.start_time:
+        shift.start_time = shift_update.start_time
+    if shift_update.end_time:
+        shift.end_time = shift_update.end_time
+    if shift_update.role:
+        shift.role = shift_update.role
+    
+    # Handle employee_id update
+    # We need to check if employee_id is explicitly set (even to None)
+    # Pydantic's model_dump(exclude_unset=True) helps, but here we access fields directly.
+    # If the client sends null for employee_id, it means unassign.
+    # If the client omits employee_id, it is None in the model default.
+    # We need to know if it was sent.
+    # For simplicity, let's assume if it's in the request, we update it.
+    # But Pydantic v2 `model_dump(exclude_unset=True)` is the way.
+    
+    update_data = shift_update.model_dump(exclude_unset=True)
+    
+    for key, value in update_data.items():
+        setattr(shift, key, value)
+    
+    await db.commit()
+    await db.refresh(shift)
+    return ShiftResponse.model_validate(shift)
 
 
 @router.delete("/range", status_code=status.HTTP_204_NO_CONTENT)
@@ -314,39 +474,15 @@ async def delete_shifts_range(
     employees = employees_result.scalars().all()
     employee_ids = [emp.id for emp in employees] if employees else []
     
-    # IMPORTANT: Use date-only comparison to delete all shifts from the week
-    # Extract date parts to compare only dates, not times
-    # This ensures we delete all shifts from Monday 00:00 to Sunday 23:59:59
-    from datetime import timedelta, time
-    from sqlalchemy import func, cast, Date
-    
     # Normalize start_date to beginning of day
     start_date_normalized = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
     # Normalize end_date to end of day (23:59:59.999999)
     end_date_normalized = end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
     
-    # First, let's see what shifts exist in this range (for debugging)
-    # Check ALL shifts in range (before filtering by employee_id)
-    debug_query = select(Shift).where(
-        Shift.start_time >= start_date_normalized,
-        Shift.start_time <= end_date_normalized,
-    )
-    debug_result = await db.execute(debug_query)
-    all_shifts_in_range = debug_result.scalars().all()
-    print(f"[DELETE] Found {len(all_shifts_in_range)} total shifts in range {start_date_normalized} to {end_date_normalized}")
-    for shift in all_shifts_in_range[:10]:  # Show first 10
-        print(f"[DELETE]   Shift {shift.id}: {shift.start_time} - {shift.end_time}, employee_id={shift.employee_id}, role={shift.role}")
-    
     # Delete all shifts in the date range
-    # Strategy: Delete shifts that are either:
-    # 1. Assigned to employees of this organization (employee_id in employee_ids)
-    # 2. Open shifts (employee_id is None) - we can't verify organization, but in MVP context,
-    #    if user is clearing their week, they likely created these open shifts
-    # 
-    # Note: For open shifts, we rely on the fact that in MVP, users only see/manage their own org's data
     conditions = [
         Shift.start_time >= start_date_normalized,
-        Shift.start_time <= end_date_normalized,  # Include all shifts up to end of end_date
+        Shift.start_time <= end_date_normalized,
     ]
     
     if employee_ids:
@@ -362,13 +498,8 @@ async def delete_shifts_range(
         conditions.append(Shift.employee_id.is_(None))
     
     delete_stmt = delete(Shift).where(and_(*conditions))
-    result = await db.execute(delete_stmt)
+    await db.execute(delete_stmt)
     await db.commit()
-    
-    # Log for debugging
-    print(f"[DELETE] Deleted shifts in range {start_date} to {end_date} for org {organization_id}")
-    print(f"[DELETE] Employee IDs in org: {employee_ids}")
-    print(f"[DELETE] Rows affected: {result.rowcount if hasattr(result, 'rowcount') else 'unknown'}")
 
 
 @router.get("/", response_model=List[ShiftResponse])
@@ -416,4 +547,5 @@ async def get_shifts(
     shifts = shifts_result.scalars().all()
     
     return [ShiftResponse.model_validate(shift) for shift in shifts]
+
 
