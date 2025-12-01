@@ -57,10 +57,6 @@ Build a functional MVP that automates employee scheduling using AI (Constraint S
   1. **Clean Slate:** Reset `employee_id` to `None` for all unpublished shifts in the selected range (prevents duplicates).
   2. **Fetch:** Get all Open Shifts (Demand) + Availabilities.
   3. **Match:** Assign Employees to Shifts maximizing `preference_score`.
-  4. **Constraints:**
-     - No overlapping shifts for one person.
-     - Max hours/week limit respected.
-     - Employee availability must cover the shift time.
 
 # API ENDPOINTS STRUCTURE (FastAPI)
 - `POST /api/v1/employees/` (Create Employee)

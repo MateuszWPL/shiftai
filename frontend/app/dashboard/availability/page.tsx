@@ -81,14 +81,14 @@ export default function AvailabilityPage() {
     e.preventDefault();
     
     if (!selectedEmployeeId || !selectedDate) {
-      showToast("Please select an employee and date", "error");
+      showToast("Proszę wybrać pracownika i datę", "error");
       return;
     }
 
     // Validate time format
     const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
     if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
-      showToast("Please enter valid time in HH:MM format", "error");
+      showToast("Proszę podać poprawny czas w formacie GG:MM", "error");
       return;
     }
 
@@ -124,7 +124,7 @@ export default function AvailabilityPage() {
 
     // Validate time range (if not ending next day, end must be after start)
     if (!endsNextDay && endDateTime <= startDateTime) {
-      showToast("End time must be after start time", "error");
+      showToast("Czas zakończenia musi być po czasie rozpoczęcia", "error");
       return;
     }
     
@@ -132,11 +132,11 @@ export default function AvailabilityPage() {
     if (endsNextDay) {
       const hoursDiff = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60 * 60);
       if (hoursDiff > 24) {
-        showToast("Availability cannot span more than 24 hours", "error");
+        showToast("Dostępność nie może przekraczać 24 godzin", "error");
         return;
       }
       if (hoursDiff <= 0) {
-        showToast("End time must be after start time", "error");
+        showToast("Czas zakończenia musi być po czasie rozpoczęcia", "error");
         return;
       }
     }
@@ -176,10 +176,10 @@ export default function AvailabilityPage() {
         await fetchAvailability(selectedEmployeeId);
       }
       
-      showToast("Availability added successfully!", "success");
+      showToast("Dostępność dodana pomyślnie!", "success");
     } catch (error) {
       console.error("Error creating availability:", error);
-      let errorMessage = "Failed to add availability. Please try again.";
+      let errorMessage = "Nie udało się dodać dostępności. Spróbuj ponownie.";
       
       if (error instanceof ApiClientError) {
         errorMessage =
@@ -201,9 +201,9 @@ export default function AvailabilityPage() {
     const end = new Date(avail.end_time);
     
     // Use UTC methods to display times consistently
-    const dayName = start.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+    const dayName = start.toLocaleDateString("pl-PL", { weekday: "short", timeZone: "UTC" });
     const day = start.getUTCDate();
-    const month = start.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+    const month = start.toLocaleDateString("pl-PL", { month: "short", timeZone: "UTC" });
     
     // Format time in UTC (HH:MM)
     const startHour = start.getUTCHours().toString().padStart(2, "0");
@@ -221,7 +221,7 @@ export default function AvailabilityPage() {
     
     if (isNextDay) {
       const endDay = end.getUTCDate();
-      const endMonth = end.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+      const endMonth = end.toLocaleDateString("pl-PL", { month: "short", timeZone: "UTC" });
       return `${dayName}, ${day} ${month}: ${startTime} - ${endDay} ${endMonth} ${endTime} (Pref: ${avail.preference_score})`;
     }
     
@@ -234,10 +234,10 @@ export default function AvailabilityPage() {
     <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">
-          Employee Availability
+          Dostępność Pracowników
         </h1>
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-          Manage availability schedules for your employees
+          Zarządzaj godzinami dostępności swoich pracowników
         </p>
       </div>
 
@@ -246,16 +246,16 @@ export default function AvailabilityPage() {
         <div className="lg:col-span-1">
           <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-              <h2 className="text-lg font-semibold">Employees</h2>
+              <h2 className="text-lg font-semibold">Pracownicy</h2>
             </div>
             <div className="divide-y divide-gray-200 dark:divide-gray-800">
               {loading ? (
                 <div className="p-4 text-center text-sm text-gray-500">
-                  Loading...
+                  Ładowanie...
                 </div>
               ) : employees.length === 0 ? (
                 <div className="p-4 text-center text-sm text-gray-500">
-                  No employees found
+                  Brak pracowników
                 </div>
               ) : (
                 employees.map((employee) => (
@@ -288,14 +288,14 @@ export default function AvailabilityPage() {
               {/* Add Availability Form */}
               <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <h2 className="mb-4 text-lg font-semibold">
-                  Add Availability for {selectedEmployee.first_name}{" "}
+                  Dodaj Dostępność dla {selectedEmployee.first_name}{" "}
                   {selectedEmployee.last_name}
                 </h2>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   {/* Date Picker */}
                   <div className="space-y-2">
-                    <Label>Date</Label>
+                    <Label>Data</Label>
                     <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                       <PopoverTrigger asChild>
                         <Button
@@ -304,13 +304,13 @@ export default function AvailabilityPage() {
                           className="w-full justify-start text-left font-normal"
                         >
                           {selectedDate
-                            ? selectedDate.toLocaleDateString("en-US", {
+                            ? selectedDate.toLocaleDateString("pl-PL", {
                                 weekday: "long",
                                 year: "numeric",
                                 month: "long",
                                 day: "numeric",
                               })
-                            : "Pick a date"}
+                            : "Wybierz datę"}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
@@ -339,7 +339,7 @@ export default function AvailabilityPage() {
                   {/* Time Range */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="start_time">Start Time (HH:MM)</Label>
+                      <Label htmlFor="start_time">Start (GG:MM)</Label>
                       <Input
                         id="start_time"
                         type="text"
@@ -351,7 +351,7 @@ export default function AvailabilityPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="end_time">End Time (HH:MM)</Label>
+                      <Label htmlFor="end_time">Koniec (GG:MM)</Label>
                       <Input
                         id="end_time"
                         type="text"
@@ -378,7 +378,7 @@ export default function AvailabilityPage() {
                       htmlFor="ends_next_day" 
                       className="text-sm font-normal cursor-pointer"
                     >
-                      Ends next day (for shifts that go past midnight)
+                      Kończy się następnego dnia (dla zmian nocnych)
                     </Label>
                   </div>
 
@@ -386,10 +386,10 @@ export default function AvailabilityPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="preference_score">
-                        Preference Score: {preferenceScore}
+                        Poziom Preferencji: {preferenceScore}
                       </Label>
                       <span className="text-xs text-gray-500 dark:text-gray-400">
-                        1 = Can work, 10 = Wants to work
+                        1 = Może pracować, 10 = Chce pracować
                       </span>
                     </div>
                     <Slider
@@ -404,7 +404,7 @@ export default function AvailabilityPage() {
                   </div>
 
                   <Button type="submit" disabled={submitting} className="w-full">
-                    {submitting ? "Saving..." : "Save Availability"}
+                    {submitting ? "Zapisywanie..." : "Zapisz Dostępność"}
                   </Button>
                 </form>
               </div>
@@ -412,12 +412,12 @@ export default function AvailabilityPage() {
               {/* Existing Availability List */}
               <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-                  <h2 className="text-lg font-semibold">Existing Availability</h2>
+                  <h2 className="text-lg font-semibold">Istniejąca Dostępność</h2>
                 </div>
                 <div className="divide-y divide-gray-200 dark:divide-gray-800">
                   {availabilities.length === 0 ? (
                     <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                      No availability slots added yet
+                      Brak dodanej dostępności
                     </div>
                   ) : (
                     availabilities.map((avail) => (
@@ -430,16 +430,16 @@ export default function AvailabilityPage() {
                           variant="ghost"
                           size="sm"
                           onClick={async () => {
-                            if (confirm("Are you sure you want to delete this availability slot?")) {
+                            if (confirm("Czy na pewno chcesz usunąć tę dostępność?")) {
                               try {
                                 await availabilityApi.delete(avail.id);
-                                showToast("Availability deleted successfully!", "success");
+                                showToast("Dostępność usunięta pomyślnie!", "success");
                                 if (selectedEmployeeId) {
                                   await fetchAvailability(selectedEmployeeId);
                                 }
                               } catch (error) {
                                 console.error("Error deleting availability:", error);
-                                let errorMessage = "Failed to delete availability. Please try again.";
+                                let errorMessage = "Nie udało się usunąć dostępności. Spróbuj ponownie.";
                                 if (error instanceof ApiClientError) {
                                   errorMessage =
                                     typeof error.data.detail === "string"
@@ -452,7 +452,7 @@ export default function AvailabilityPage() {
                           }}
                           className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
                         >
-                          Delete
+                          Usuń
                         </Button>
                       </div>
                     ))
@@ -463,7 +463,7 @@ export default function AvailabilityPage() {
           ) : (
             <div className="rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900">
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Select an employee from the list to manage their availability
+                Wybierz pracownika z listy, aby zarządzać jego dostępnością
               </p>
             </div>
           )}

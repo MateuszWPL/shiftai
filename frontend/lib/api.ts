@@ -156,6 +156,8 @@ export interface GenerateScheduleRequest {
 export const employeesApi = {
   getAll: (orgId: number) => apiGet<Employee[]>(`/employees/${orgId}`),
   create: (data: unknown) => apiPost<Employee>('/employees/', data),
+  update: (employeeId: number, data: unknown) => apiPut<Employee>(`/employees/${employeeId}`, data),
+  delete: (employeeId: number) => apiDelete<void>(`/employees/${employeeId}`),
 };
 
 export const availabilityApi = {

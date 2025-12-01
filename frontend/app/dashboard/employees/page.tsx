@@ -11,14 +11,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { AddEmployeeDialog } from "@/components/employees/AddEmployeeDialog";
+import { EmployeeDialog } from "@/components/employees/EmployeeDialog";
 import { useToast } from "@/components/ui/toast";
+import { Pencil } from "lucide-react";
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const { showToast, ToastComponent } = useToast();
 
   // Hardcoded organization ID for MVP
@@ -35,7 +37,7 @@ export default function EmployeesPage() {
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to fetch employees. Please try again."
+          : "Nie udało się pobrać listy pracowników. Spróbuj ponownie."
       );
     } finally {
       setLoading(false);
@@ -46,10 +48,20 @@ export default function EmployeesPage() {
     fetchEmployees();
   }, [fetchEmployees]);
 
-  const handleEmployeeAdded = useCallback(() => {
+  const handleAddClick = () => {
+    setSelectedEmployee(null);
+    setDialogOpen(true);
+  };
+
+  const handleEditClick = (employee: Employee) => {
+    setSelectedEmployee(employee);
+    setDialogOpen(true);
+  };
+
+  const handleEmployeeSaved = useCallback(() => {
     fetchEmployees();
-    showToast("Employee added successfully!", "success");
-  }, [fetchEmployees, showToast]);
+    showToast(selectedEmployee ? "Zaktualizowano dane pracownika!" : "Dodano nowego pracownika!", "success");
+  }, [fetchEmployees, showToast, selectedEmployee]);
 
   const handleEmployeeError = useCallback((message: string) => {
     showToast(message, "error");
@@ -72,23 +84,24 @@ export default function EmployeesPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">
-            Employees
+            Pracownicy
           </h1>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Manage your organization&apos;s employees
+            Zarządzaj pracownikami w swojej organizacji
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)} size="default">
-          Add Employee
+        <Button onClick={handleAddClick} size="default">
+          Dodaj Pracownika
         </Button>
       </div>
 
-      <AddEmployeeDialog
+      <EmployeeDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onSuccess={handleEmployeeAdded}
+        onSuccess={handleEmployeeSaved}
         onError={handleEmployeeError}
         organizationId={ORGANIZATION_ID}
+        employee={selectedEmployee}
       />
 
       {ToastComponent}
@@ -116,18 +129,18 @@ export default function EmployeesPage() {
           {employees.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                No employees found. Click &quot;Add Employee&quot; to get started.
+                Brak pracowników. Kliknij "Dodaj Pracownika", aby rozpocząć.
               </p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="font-semibold">Name</TableHead>
-                  <TableHead className="font-semibold">Role</TableHead>
-                  <TableHead className="font-semibold">Hourly Rate</TableHead>
+                  <TableHead className="font-semibold">Imię i Nazwisko</TableHead>
+                  <TableHead className="font-semibold">Rola</TableHead>
+                  <TableHead className="font-semibold">Stawka Godzinowa</TableHead>
                   <TableHead className="font-semibold text-right">
-                    Actions
+                    Akcje
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -143,10 +156,11 @@ export default function EmployeesPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => {}}
+                        onClick={() => handleEditClick(employee)}
                         className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
                       >
-                        View
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edytuj
                       </Button>
                     </TableCell>
                   </TableRow>

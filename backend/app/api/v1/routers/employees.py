@@ -73,6 +73,87 @@ async def create_employee(
     return EmployeeResponse.model_validate(db_employee)
 
 
+@router.put("/{employee_id}", response_model=EmployeeResponse)
+async def update_employee(
+    employee_id: int,
+    employee_data: EmployeeCreate,
+    db: AsyncSession = Depends(get_db),
+) -> EmployeeResponse:
+    """Update an employee."""
+    if employee_id <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid employee ID"
+        )
+        
+    # Check if employee exists
+    result = await db.execute(
+        select(Employee).where(Employee.id == employee_id)
+    )
+    db_employee = result.scalar_one_or_none()
+    
+    if not db_employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Employee with id {employee_id} not found"
+        )
+        
+    # Update fields
+    db_employee.first_name = employee_data.first_name
+    db_employee.last_name = employee_data.last_name
+    db_employee.email = employee_data.email
+    db_employee.phone = employee_data.phone
+    db_employee.role = employee_data.role
+    db_employee.hourly_rate = employee_data.hourly_rate
+    db_employee.max_hours_per_week = employee_data.max_hours_per_week
+    # We don't update organization_id usually, but if needed we could.
+    # For now let's keep it simple.
+    
+    try:
+        await db.commit()
+        await db.refresh(db_employee)
+    except IntegrityError as e:
+        await db.rollback()
+        error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Database integrity error: {error_msg}"
+        )
+        
+    return EmployeeResponse.model_validate(db_employee)
+
+
+@router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_employee(
+    employee_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete an employee."""
+    if employee_id <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid employee ID"
+        )
+    
+    # Check if employee exists
+    result = await db.execute(
+        select(Employee).where(Employee.id == employee_id)
+    )
+    employee = result.scalar_one_or_none()
+    
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Employee with id {employee_id} not found"
+        )
+    
+    # Delete the employee
+    await db.delete(employee)
+    await db.commit()
+    
+    return None
+
+
 @router.get("/{org_id}", response_model=List[EmployeeResponse])
 async def get_employees_by_organization(
     org_id: int,
