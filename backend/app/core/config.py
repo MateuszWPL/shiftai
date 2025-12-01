@@ -1,5 +1,8 @@
 """Application configuration."""
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 from typing import Optional
 from pydantic import BaseModel, Field
 

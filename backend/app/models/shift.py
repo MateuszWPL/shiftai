@@ -9,18 +9,20 @@ class Shift(BaseModel):
     
     __tablename__ = "shifts"
     
-    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=True, index=True)
+    schedule_id = Column(Integer, ForeignKey("schedules.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     start_time = Column(DateTime(timezone=True), nullable=False)
     end_time = Column(DateTime(timezone=True), nullable=False)
-    role = Column(String(100), nullable=False, index=True)
+    position_name = Column(String(100), nullable=False, index=True)
     is_published = Column(Boolean, default=False, nullable=False)
     
     # Relationships
-    employee = relationship("Employee", back_populates="shifts")
+    schedule = relationship("Schedule", back_populates="shifts")
+    user = relationship("User", back_populates="shifts")
     
     # Indexes
     __table_args__ = (
-        Index("idx_shift_employee_time", "employee_id", "start_time", "end_time"),
+        Index("idx_shift_user_time", "user_id", "start_time", "end_time"),
         Index("idx_shift_published", "is_published", "start_time"),
     )
 
