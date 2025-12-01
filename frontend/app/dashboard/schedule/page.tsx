@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { shiftsApi, employeesApi, ApiClientError, type Shift, type Employee } from "@/lib/api";
+import { shiftsApi, employeesApi, schedulesApi, ApiClientError, type Shift, type Employee } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { format, startOfWeek, addDays, subWeeks, addWeeks, parseISO } from "date-fns";
@@ -200,34 +200,25 @@ export default function SchedulePage() {
     setSelectedWeekStart(null);
   }, []);
 
-  const handleAutoAssign = useCallback(async () => {
+  const handleGenerateSchedule = useCallback(async () => {
     try {
       setAutoAssigning(true);
       setError(null);
-      const startDateUTC = new Date(Date.UTC(
+      
+      // Convert weekStart to UTC ISO string (Monday 00:00:00)
+      const weekStartUTC = new Date(Date.UTC(
         weekStart.getUTCFullYear(),
         weekStart.getUTCMonth(),
         weekStart.getUTCDate(),
         0, 0, 0, 0
       ));
-      const endDateUTC = new Date(Date.UTC(
-        weekStart.getUTCFullYear(),
-        weekStart.getUTCMonth(),
-        weekStart.getUTCDate() + 6,
-        23, 59, 59, 999
-      ));
 
-      const requestData = {
-        start_date: startDateUTC.toISOString(),
-        end_date: endDateUTC.toISOString(),
-      };
-
-      const result = await shiftsApi.autoAssign(ORGANIZATION_ID, requestData);
-      showToast(`Automatycznie przypisano ${result.length} zmian!`, "success");
+      const result = await schedulesApi.generate(ORGANIZATION_ID, weekStartUTC.toISOString());
+      showToast(`Wygenerowano grafik z ${result.length} zmianami!`, "success");
       await fetchShifts();
     } catch (err) {
-      console.error("Error auto-assigning shifts:", err);
-      let errorMessage = "Nie udało się automatycznie przypisać zmian. Spróbuj ponownie.";
+      console.error("Error generating schedule:", err);
+      let errorMessage = "Nie udało się wygenerować grafiku. Upewnij się, że dodałeś zapotrzebowanie (Requirements) dla tego tygodnia.";
       if (err instanceof ApiClientError) {
         if (typeof err.data.detail === 'string') {
           errorMessage = err.data.detail;
@@ -407,8 +398,8 @@ export default function SchedulePage() {
           <Button onClick={() => handleClearDay()} disabled={clearing} variant="outline">
             {clearing ? "Czyszczenie..." : "Wyczyść Tydzień"}
           </Button>
-          <Button onClick={handleAutoAssign} disabled={autoAssigning}>
-            {autoAssigning ? "Przydzielanie..." : "Auto-Przydział"}
+          <Button onClick={handleGenerateSchedule} disabled={autoAssigning}>
+            {autoAssigning ? "Generowanie..." : "Generuj Grafik"}
           </Button>
         </div>
       </div>

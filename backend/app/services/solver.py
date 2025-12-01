@@ -137,7 +137,17 @@ class ShiftSolver:
             shift_hours[s_id] = duration
             
             for emp_id in employee_ids:
+                employee = employee_map[emp_id]
                 can_assign = False
+                
+                # Constraint: Employee role must match shift role (if specified)
+                if segment.get('role') and employee.role != segment['role']:
+                    # Role mismatch - cannot assign
+                    employee_segment_availability[emp_id, s_id] = False
+                    model.Add(x[emp_id, s_id] == 0)
+                    continue
+                
+                # Constraint: Employee must be available during this time
                 if emp_id in availability_map:
                     for avail in availability_map[emp_id]:
                         if avail.start_time <= seg_start and avail.end_time >= seg_end:

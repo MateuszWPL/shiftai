@@ -22,4 +22,6 @@ class Organization(BaseModel):
     # Relationships
     users = relationship("User", back_populates="organization", cascade="all, delete-orphan")
     employees = relationship("Employee", back_populates="organization", cascade="all, delete-orphan")
+    requirements = relationship("Requirements", back_populates="organization", cascade="all, delete-orphan")
+    schedules = relationship("Schedule", back_populates="organization", cascade="all, delete-orphan")
 

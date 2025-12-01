@@ -250,3 +250,12 @@ export const shiftsApi = {
   },
 };
 
+export const schedulesApi = {
+  generate: (organizationId: number, weekStartDate: string) => {
+    const params = new URLSearchParams();
+    params.append('organization_id', organizationId.toString());
+    params.append('week_start_date', weekStartDate);
+    return apiPost<Shift[]>(`/schedules/generate?${params.toString()}`);
+  },
+};
+

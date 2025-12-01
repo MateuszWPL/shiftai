@@ -25,6 +25,10 @@ from app.core.config import settings
 if settings.DATABASE_URL:
     # Convert asyncpg URL to sync URL for Alembic (use psycopg2)
     db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    # Force 127.0.0.1 and UTF-8 to avoid encoding errors on Windows/Polish systems
+    db_url = db_url.replace("@localhost", "@127.0.0.1")
+    if "?" not in db_url:
+        db_url += "?client_encoding=utf8"
     config.set_main_option("sqlalchemy.url", db_url)
 else:
     # Use SQLite as fallback for autogenerate when no DATABASE_URL is set

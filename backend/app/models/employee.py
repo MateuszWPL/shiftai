@@ -23,6 +23,8 @@ class Employee(BaseModel):
     organization = relationship("Organization", back_populates="employees")
     availabilities = relationship("Availability", back_populates="employee", cascade="all, delete-orphan")
     shifts = relationship("Shift", back_populates="employee", cascade="all, delete-orphan")
+    sent_swap_requests = relationship("SwapRequest", foreign_keys="SwapRequest.from_employee_id", back_populates="from_employee", cascade="all, delete-orphan")
+    received_swap_requests = relationship("SwapRequest", foreign_keys="SwapRequest.to_employee_id", back_populates="to_employee", cascade="all, delete-orphan")
     
     # Indexes
     __table_args__ = (
