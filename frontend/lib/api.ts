@@ -259,3 +259,37 @@ export const schedulesApi = {
   },
 };
 
+// Type definitions for Requirements
+export interface Requirement {
+  id: number;
+  organization_id: number;
+  week_start_date: string; // ISO date string
+  day_of_week: number; // 0=Monday, 6=Sunday
+  position_name: string;
+  start_time: string; // Time string (HH:mm:ss)
+  end_time: string; // Time string (HH:mm:ss)
+  headcount: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RequirementCreate {
+  organization_id: number;
+  week_start_date: string; // ISO date string (must be Monday)
+  day_of_week: number; // 0=Monday, 6=Sunday
+  position_name: string;
+  start_time: string; // Time string (HH:mm:ss)
+  end_time: string; // Time string (HH:mm:ss)
+  headcount: number;
+}
+
+export const requirementsApi = {
+  getAll: (organizationId: number) => {
+    const params = new URLSearchParams();
+    params.append('organization_id', organizationId.toString());
+    return apiGet<Requirement[]>(`/requirements/?${params.toString()}`);
+  },
+  create: (data: RequirementCreate) => apiPost<Requirement>('/requirements/', data),
+  delete: (requirementId: number) => apiDelete<void>(`/requirements/${requirementId}`),
+};
+
