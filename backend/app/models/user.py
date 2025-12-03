@@ -9,6 +9,7 @@ class UserRole(str, enum.Enum):
     """User role type."""
     OWNER = "owner"
     MANAGER = "manager"
+    EMPLOYEE = "employee"
 
 
 class User(BaseModel):
@@ -18,11 +19,13 @@ class User(BaseModel):
     
     email = Column(String(255), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
-    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    full_name = Column(String(255), nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
     role = Column(SQLEnum(UserRole), nullable=False)
     
     # Relationships
     organization = relationship("Organization", back_populates="users")
+    employee = relationship("Employee", back_populates="user", uselist=False)
     
     # Indexes
     __table_args__ = (

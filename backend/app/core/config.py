@@ -15,9 +15,14 @@ class Settings(BaseModel):
     DATABASE_URL: Optional[str] = Field(default=None)
     
     # Security
-    SECRET_KEY: Optional[str] = Field(default=None)
+    SECRET_KEY: str = Field(default="dev-secret-key-change-in-production-please-use-strong-random-key")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    
+    # Email (Resend)
+    RESEND_API_KEY: Optional[str] = Field(default=None)
+    RESEND_FROM_EMAIL: str = Field(default="noreply@antigravity.pl", description="From email address")
+    FRONTEND_URL: str = Field(default="http://localhost:3000", description="Frontend URL for invitation links")
     
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
@@ -32,7 +37,10 @@ class Settings(BaseModel):
         
         return cls(
             DATABASE_URL=os.getenv("DATABASE_URL"),
-            SECRET_KEY=os.getenv("SECRET_KEY"),
+            SECRET_KEY=os.getenv("SECRET_KEY", "dev-secret-key-change-in-production-please-use-strong-random-key"),
+            RESEND_API_KEY=os.getenv("RESEND_API_KEY"),
+            RESEND_FROM_EMAIL=os.getenv("RESEND_FROM_EMAIL", "noreply@antigravity.pl"),
+            FRONTEND_URL=os.getenv("FRONTEND_URL", "http://localhost:3000"),
             CORS_ORIGINS=cors_origins,
         )
 

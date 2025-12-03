@@ -129,6 +129,43 @@ backend/
 
 ---
 
+## 🔄 Resetowanie Danych Grafiku
+
+Jeśli chcesz zacząć od nowa z systemem grafiku, możesz zresetować wszystkie dane związane z grafikiem.
+
+### Metoda 1: Przez API (Rekomendowane)
+
+**Reset danych grafiku (zachowuje pracowników i użytkowników):**
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/admin/reset-scheduling"
+```
+
+**Reset wszystkich danych (zachowuje tylko użytkowników i organizacje):**
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/admin/reset-all"
+```
+
+### Metoda 2: Przez Skrypt
+
+Uruchom skrypt resetujący:
+```powershell
+python scripts/reset_scheduling.py
+```
+
+**Uwaga:** Reset usuwa:
+- Wszystkie grafiki (schedules)
+- Wszystkie zmiany (shifts)
+- Wszystkie wymagania (requirements)
+- Wszystkie dostępności (availabilities)
+- Wszystkie prośby o zamianę (swap requests)
+
+**Zachowane dane:**
+- Użytkownicy (users)
+- Organizacje (organizations)
+- Pracownicy (employees) - przy użyciu `/reset-scheduling`
+
+---
+
 ## ⚠️ Rozwiązywanie Problemów
 
 ### 1. "Database not initialized" / Błąd połączenia

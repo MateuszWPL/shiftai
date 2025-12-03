@@ -18,13 +18,16 @@ class Employee(BaseModel):
     max_hours_per_week = Column(Integer, nullable=False)
     role = Column(String(100), nullable=False, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Relationships
     organization = relationship("Organization", back_populates="employees")
+    user = relationship("User", back_populates="employee", uselist=False)
     availabilities = relationship("Availability", back_populates="employee", cascade="all, delete-orphan")
     shifts = relationship("Shift", back_populates="employee", cascade="all, delete-orphan")
     sent_swap_requests = relationship("SwapRequest", foreign_keys="SwapRequest.from_employee_id", back_populates="from_employee", cascade="all, delete-orphan")
     received_swap_requests = relationship("SwapRequest", foreign_keys="SwapRequest.to_employee_id", back_populates="to_employee", cascade="all, delete-orphan")
+    invitation = relationship("EmployeeInvitation", back_populates="employee", uselist=False, cascade="all, delete-orphan")
     
     # Indexes
     __table_args__ = (

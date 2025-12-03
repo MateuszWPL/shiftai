@@ -20,15 +20,15 @@ import { ApiClientError } from "@/lib/api";
 
 // Zod schema matching the API EmployeeCreate schema
 const employeeFormSchema = z.object({
-  first_name: z.string().min(1, "First name is required").max(100),
-  last_name: z.string().min(1, "Last name is required").max(100),
-  role: z.string().min(1, "Role is required").max(100),
-  hourly_rate: z.coerce.number().min(0, "Hourly rate must be 0 or greater"),
+  first_name: z.string().min(1, "Imię jest wymagane").max(100),
+  last_name: z.string().min(1, "Nazwisko jest wymagane").max(100),
+  role: z.string().min(1, "Rola jest wymagana").max(100),
+  hourly_rate: z.coerce.number().min(0, "Stawka godzinowa musi być większa lub równa 0"),
   max_hours_per_week: z.coerce
     .number()
-    .min(1, "Max hours must be at least 1")
-    .max(168, "Max hours cannot exceed 168"),
-  email: z.string().email("Invalid email address").optional().or(z.literal("")),
+    .min(1, "Maksymalna liczba godzin musi wynosić co najmniej 1")
+    .max(168, "Maksymalna liczba godzin nie może przekraczać 168"),
+  email: z.string().email("Nieprawidłowy adres email").optional().or(z.literal("")),
   phone: z.string().max(20).optional().or(z.literal("")),
 });
 
@@ -95,7 +95,7 @@ export function AddEmployeeDialog({
       onSuccess();
     } catch (error) {
       console.error("Error creating employee:", error);
-      let errorMessage = "Failed to create employee. Please try again.";
+      let errorMessage = "Nie udało się dodać pracownika. Spróbuj ponownie.";
       
       if (error instanceof ApiClientError) {
         errorMessage =
@@ -125,9 +125,9 @@ export function AddEmployeeDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Add New Employee</DialogTitle>
+          <DialogTitle>Dodaj nowego pracownika</DialogTitle>
           <DialogDescription>
-            Fill in the details to add a new employee to your organization.
+            Wypełnij szczegóły, aby dodać nowego pracownika do swojej organizacji. Pracownicy nie mają konta w systemie - są przypisani tylko do zmian.
           </DialogDescription>
         </DialogHeader>
 
@@ -135,12 +135,12 @@ export function AddEmployeeDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="first_name">
-                First Name <span className="text-red-500">*</span>
+                Imię <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="first_name"
                 {...register("first_name")}
-                placeholder="John"
+                placeholder="Jan"
                 disabled={isSubmitting}
               />
               {errors.first_name && (
@@ -152,12 +152,12 @@ export function AddEmployeeDialog({
 
             <div className="space-y-2">
               <Label htmlFor="last_name">
-                Last Name <span className="text-red-500">*</span>
+                Nazwisko <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="last_name"
                 {...register("last_name")}
-                placeholder="Doe"
+                placeholder="Kowalski"
                 disabled={isSubmitting}
               />
               {errors.last_name && (
@@ -170,12 +170,12 @@ export function AddEmployeeDialog({
 
           <div className="space-y-2">
             <Label htmlFor="role">
-              Role <span className="text-red-500">*</span>
+              Rola <span className="text-red-500">*</span>
             </Label>
             <Input
               id="role"
               {...register("role")}
-              placeholder="Waiter, Cook, Manager..."
+              placeholder="Kelner, Kucharz, Menadżer..."
               disabled={isSubmitting}
             />
             {errors.role && (
@@ -186,7 +186,7 @@ export function AddEmployeeDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="hourly_rate">
-                Hourly Rate (PLN) <span className="text-red-500">*</span>
+                Stawka godzinowa (PLN) <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="hourly_rate"
@@ -206,7 +206,7 @@ export function AddEmployeeDialog({
 
             <div className="space-y-2">
               <Label htmlFor="max_hours_per_week">
-                Max Hours/Week <span className="text-red-500">*</span>
+                Maks. godzin/tydzień <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="max_hours_per_week"
@@ -226,12 +226,12 @@ export function AddEmployeeDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email (Optional)</Label>
+            <Label htmlFor="email">Email (opcjonalne)</Label>
             <Input
               id="email"
               type="email"
               {...register("email")}
-              placeholder="john.doe@example.com"
+              placeholder="jan.kowalski@example.com"
               disabled={isSubmitting}
             />
             {errors.email && (
@@ -240,7 +240,7 @@ export function AddEmployeeDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phone">Phone (Optional)</Label>
+            <Label htmlFor="phone">Telefon (opcjonalne)</Label>
             <Input
               id="phone"
               type="tel"
@@ -268,10 +268,10 @@ export function AddEmployeeDialog({
               onClick={handleClose}
               disabled={isSubmitting}
             >
-              Cancel
+              Anuluj
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Adding..." : "Add Employee"}
+              {isSubmitting ? "Dodawanie..." : "Dodaj pracownika"}
             </Button>
           </DialogFooter>
         </form>

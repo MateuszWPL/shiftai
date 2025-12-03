@@ -27,8 +27,20 @@ if settings.DATABASE_URL:
     db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
     # Force 127.0.0.1 and UTF-8 to avoid encoding errors on Windows/Polish systems
     db_url = db_url.replace("@localhost", "@127.0.0.1")
+    # Ensure proper encoding
     if "?" not in db_url:
         db_url += "?client_encoding=utf8"
+    else:
+        if "client_encoding" not in db_url:
+            db_url += "&client_encoding=utf8"
+    # URL encode to handle special characters
+    import urllib.parse
+    parsed = urllib.parse.urlparse(db_url)
+    # Reconstruct URL with proper encoding
+    if parsed.password:
+        # Re-encode password if it contains special characters
+        password = urllib.parse.quote(parsed.password, safe='')
+        db_url = db_url.replace(f":{parsed.password}@", f":{password}@")
     config.set_main_option("sqlalchemy.url", db_url)
 else:
     # Use SQLite as fallback for autogenerate when no DATABASE_URL is set

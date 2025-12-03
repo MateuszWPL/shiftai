@@ -10,10 +10,12 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { useToast } from "@/components/ui/toast";
 import { ApiClientError } from "@/lib/api";
-
-const ORGANIZATION_ID = 1;
+import { useAuth } from "@/contexts/AuthContext";
+import { AuthGuard } from "@/components/AuthGuard";
 
 export default function AvailabilityPage() {
+  const { user } = useAuth();
+  const organizationId = user?.organization_id;
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(null);
   const [availabilities, setAvailabilities] = useState<Availability[]>([]);
@@ -32,10 +34,15 @@ export default function AvailabilityPage() {
 
   // Fetch employees
   useEffect(() => {
+    if (!organizationId) {
+      setLoading(false);
+      return;
+    }
+
     const fetchEmployees = async () => {
       try {
         setLoading(true);
-        const data = await employeesApi.getAll(ORGANIZATION_ID);
+        const data = await employeesApi.getAll(organizationId);
         setEmployees(data);
         // Auto-select first employee if available
         if (data.length > 0 && !selectedEmployeeId) {
@@ -44,7 +51,7 @@ export default function AvailabilityPage() {
       } catch (err) {
         console.error("Error fetching employees:", err);
         showToast(
-          err instanceof Error ? err.message : "Failed to fetch employees",
+          err instanceof Error ? err.message : "Nie udało się załadować pracowników",
           "error"
         );
       } finally {
@@ -53,7 +60,7 @@ export default function AvailabilityPage() {
     };
 
     fetchEmployees();
-  }, []);
+  }, [organizationId]);
 
   // Fetch availability when employee is selected
   const fetchAvailability = useCallback(async (employeeId: number) => {
@@ -201,9 +208,9 @@ export default function AvailabilityPage() {
     const end = new Date(avail.end_time);
     
     // Use UTC methods to display times consistently
-    const dayName = start.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+    const dayName = start.toLocaleDateString("pl-PL", { weekday: "short", timeZone: "UTC" });
     const day = start.getUTCDate();
-    const month = start.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+    const month = start.toLocaleDateString("pl-PL", { month: "short", timeZone: "UTC" });
     
     // Format time in UTC (HH:MM)
     const startHour = start.getUTCHours().toString().padStart(2, "0");
@@ -221,7 +228,7 @@ export default function AvailabilityPage() {
     
     if (isNextDay) {
       const endDay = end.getUTCDate();
-      const endMonth = end.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+      const endMonth = end.toLocaleDateString("pl-PL", { month: "short", timeZone: "UTC" });
       return `${dayName}, ${day} ${month}: ${startTime} - ${endDay} ${endMonth} ${endTime} (Pref: ${avail.preference_score})`;
     }
     
@@ -230,14 +237,29 @@ export default function AvailabilityPage() {
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
 
+  if (!organizationId) {
+    return (
+      <AuthGuard>
+        <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+            <p className="text-sm font-medium text-red-800 dark:text-red-200">
+              Brak przypisania do zespołu. Skontaktuj się z administratorem.
+            </p>
+          </div>
+        </div>
+      </AuthGuard>
+    );
+  }
+
   return (
-    <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <AuthGuard>
+      <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">
-          Employee Availability
+          Dyspozycyjność pracowników
         </h1>
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-          Manage availability schedules for your employees
+          Zarządzaj harmonogramami dyspozycyjności swoich pracowników
         </p>
       </div>
 
@@ -246,16 +268,16 @@ export default function AvailabilityPage() {
         <div className="lg:col-span-1">
           <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-              <h2 className="text-lg font-semibold">Employees</h2>
+              <h2 className="text-lg font-semibold">Pracownicy</h2>
             </div>
             <div className="divide-y divide-gray-200 dark:divide-gray-800">
               {loading ? (
                 <div className="p-4 text-center text-sm text-gray-500">
-                  Loading...
+                  Ładowanie...
                 </div>
               ) : employees.length === 0 ? (
                 <div className="p-4 text-center text-sm text-gray-500">
-                  No employees found
+                  Brak pracowników
                 </div>
               ) : (
                 employees.map((employee) => (
@@ -288,14 +310,14 @@ export default function AvailabilityPage() {
               {/* Add Availability Form */}
               <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <h2 className="mb-4 text-lg font-semibold">
-                  Add Availability for {selectedEmployee.first_name}{" "}
+                  Dodaj dyspozycyjność dla {selectedEmployee.first_name}{" "}
                   {selectedEmployee.last_name}
                 </h2>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   {/* Date Picker */}
                   <div className="space-y-2">
-                    <Label>Date</Label>
+                    <Label>Data</Label>
                     <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                       <PopoverTrigger asChild>
                         <Button
@@ -304,13 +326,13 @@ export default function AvailabilityPage() {
                           className="w-full justify-start text-left font-normal"
                         >
                           {selectedDate
-                            ? selectedDate.toLocaleDateString("en-US", {
+                            ? selectedDate.toLocaleDateString("pl-PL", {
                                 weekday: "long",
                                 year: "numeric",
                                 month: "long",
                                 day: "numeric",
                               })
-                            : "Pick a date"}
+                            : "Wybierz datę"}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
@@ -339,7 +361,7 @@ export default function AvailabilityPage() {
                   {/* Time Range */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="start_time">Start Time (HH:MM)</Label>
+                      <Label htmlFor="start_time">Godzina rozpoczęcia (GG:MM)</Label>
                       <Input
                         id="start_time"
                         type="text"
@@ -351,7 +373,7 @@ export default function AvailabilityPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="end_time">End Time (HH:MM)</Label>
+                      <Label htmlFor="end_time">Godzina zakończenia (GG:MM)</Label>
                       <Input
                         id="end_time"
                         type="text"
@@ -378,7 +400,7 @@ export default function AvailabilityPage() {
                       htmlFor="ends_next_day" 
                       className="text-sm font-normal cursor-pointer"
                     >
-                      Ends next day (for shifts that go past midnight)
+                      Kończy się następnego dnia (dla zmian przechodzących przez północ)
                     </Label>
                   </div>
 
@@ -386,10 +408,10 @@ export default function AvailabilityPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="preference_score">
-                        Preference Score: {preferenceScore}
+                        Preferencja: {preferenceScore}
                       </Label>
                       <span className="text-xs text-gray-500 dark:text-gray-400">
-                        1 = Can work, 10 = Wants to work
+                        1 = Może pracować, 10 = Chce pracować
                       </span>
                     </div>
                     <Slider
@@ -404,7 +426,7 @@ export default function AvailabilityPage() {
                   </div>
 
                   <Button type="submit" disabled={submitting} className="w-full">
-                    {submitting ? "Saving..." : "Save Availability"}
+                    {submitting ? "Zapisywanie..." : "Zapisz dyspozycyjność"}
                   </Button>
                 </form>
               </div>
@@ -412,12 +434,12 @@ export default function AvailabilityPage() {
               {/* Existing Availability List */}
               <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-                  <h2 className="text-lg font-semibold">Existing Availability</h2>
+                  <h2 className="text-lg font-semibold">Istniejąca dyspozycyjność</h2>
                 </div>
                 <div className="divide-y divide-gray-200 dark:divide-gray-800">
                   {availabilities.length === 0 ? (
                     <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                      No availability slots added yet
+                      Brak dodanych slotów dyspozycyjności
                     </div>
                   ) : (
                     availabilities.map((avail) => (
@@ -430,16 +452,16 @@ export default function AvailabilityPage() {
                           variant="ghost"
                           size="sm"
                           onClick={async () => {
-                            if (confirm("Are you sure you want to delete this availability slot?")) {
+                            if (confirm("Czy na pewno chcesz usunąć ten slot dyspozycyjności?")) {
                               try {
                                 await availabilityApi.delete(avail.id);
-                                showToast("Availability deleted successfully!", "success");
+                                showToast("Dyspozycyjność została usunięta pomyślnie!", "success");
                                 if (selectedEmployeeId) {
                                   await fetchAvailability(selectedEmployeeId);
                                 }
                               } catch (error) {
                                 console.error("Error deleting availability:", error);
-                                let errorMessage = "Failed to delete availability. Please try again.";
+                                let errorMessage = "Nie udało się usunąć dyspozycyjności. Spróbuj ponownie.";
                                 if (error instanceof ApiClientError) {
                                   errorMessage =
                                     typeof error.data.detail === "string"
@@ -452,7 +474,7 @@ export default function AvailabilityPage() {
                           }}
                           className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
                         >
-                          Delete
+                          Usuń
                         </Button>
                       </div>
                     ))
@@ -463,7 +485,7 @@ export default function AvailabilityPage() {
           ) : (
             <div className="rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900">
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Select an employee from the list to manage their availability
+                Wybierz pracownika z listy, aby zarządzać jego dyspozycyjnością
               </p>
             </div>
           )}
@@ -471,7 +493,8 @@ export default function AvailabilityPage() {
       </div>
 
       {ToastComponent}
-    </div>
+      </div>
+    </AuthGuard>
   );
 }
 

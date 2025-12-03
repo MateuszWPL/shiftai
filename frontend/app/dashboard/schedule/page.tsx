@@ -1,27 +1,57 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { shiftsApi, employeesApi, schedulesApi, ApiClientError, type Shift, type Employee } from "@/lib/api";
+import { requirementsApi, employeesApi, availabilityApi, shiftsApi, ApiClientError, type Requirement, type Employee, type Availability, type Shift } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { format, startOfWeek, addDays, subWeeks, addWeeks, parseISO } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { WeeklyDemandDialog } from "@/components/schedule/WeeklyDemandDialog";
-import { DndContext, DragEndEvent, useDraggable, useDroppable, DragOverlay } from "@dnd-kit/core";
+import { format, startOfWeek, addDays, subWeeks, addWeeks, parseISO, getDay } from "date-fns";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { DndContext, DragEndEvent, DragStartEvent, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import { EditRequirementDialog } from "@/components/schedule/EditRequirementDialog";
+import { AvailabilitySidebar } from "@/components/schedule/AvailabilitySidebar";
+import { useAuth } from "@/contexts/AuthContext";
+import { AuthGuard } from "@/components/AuthGuard";
 
-// --- Components for DnD ---
+// Helper to get day of week (0=Monday, 6=Sunday)
+const getDayOfWeek = (date: Date): number => {
+  const day = date.getDay();
+  return day === 0 ? 6 : day - 1;
+};
 
-interface DraggableShiftProps {
-  shift: Shift;
-  employeeName: string;
-  formatTime: (date: string) => string;
+// Helper to format time from datetime string
+const formatTime = (dateString: string): string => {
+  const date = parseISO(dateString);
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+// Helper to format time from time string (HH:mm:ss)
+const formatTimeString = (timeString: string): string => {
+  return timeString.substring(0, 5);
+};
+
+// Helper to calculate hour from time string
+const getHourFromTime = (timeString: string): number => {
+  return parseInt(timeString.split(':')[0]);
+};
+
+// Helper to calculate minute from time string
+const getMinuteFromTime = (timeString: string): number => {
+  return parseInt(timeString.split(':')[1]);
+};
+
+// Draggable Requirement Component
+interface DraggableRequirementProps {
+  requirement: Requirement;
+  weekStart: Date;
 }
 
-function DraggableShift({ shift, employeeName, formatTime }: DraggableShiftProps) {
+function DraggableRequirement({ requirement, weekStart }: DraggableRequirementProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `shift-${shift.id}`,
-    data: { shift },
+    id: `requirement-${requirement.id}`,
+    data: { requirement },
   });
 
   const style = transform ? {
@@ -30,7 +60,9 @@ function DraggableShift({ shift, employeeName, formatTime }: DraggableShiftProps
     opacity: isDragging ? 0.5 : 1,
   } : undefined;
 
-  const isAssigned = shift.employee_id !== null;
+  const dayDate = addDays(weekStart, requirement.day_of_week);
+  const startTime = formatTimeString(requirement.start_time);
+  const endTime = formatTimeString(requirement.end_time);
 
   return (
     <div
@@ -38,386 +70,369 @@ function DraggableShift({ shift, employeeName, formatTime }: DraggableShiftProps
       style={style}
       {...listeners}
       {...attributes}
-      className={`rounded-md border p-2 mb-2 cursor-grab active:cursor-grabbing shadow-sm ${
-        isAssigned
-          ? "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20"
-          : "border-gray-300 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
-      }`}
+      className="rounded-md border-2 border-blue-400 bg-blue-100 dark:bg-blue-900/30 p-2 cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-shadow"
     >
-      <div className={`text-xs font-medium ${isAssigned ? "text-blue-900 dark:text-blue-200" : "text-gray-700 dark:text-gray-300"}`}>
-        {isAssigned ? employeeName : `${shift.role} - Wakat`}
+      <div className="text-xs font-semibold text-blue-900 dark:text-blue-200">
+        {requirement.position_name}
       </div>
-      <div className={`mt-1 text-xs ${isAssigned ? "text-blue-700 dark:text-blue-300" : "text-gray-600 dark:text-gray-400"}`}>
-        {formatTime(shift.start_time)} - {formatTime(shift.end_time)}
+      <div className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+        {startTime} - {endTime}
       </div>
-      {isAssigned && (
-        <div className="mt-1 text-xs text-blue-600 dark:text-blue-400">
-          {shift.role}
-        </div>
-      )}
+      <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+        {requirement.headcount} {requirement.headcount === 1 ? 'osoba' : 'osoby'}
+      </div>
     </div>
   );
 }
 
-interface DroppableDayProps {
+// Droppable Day Cell Component
+interface DroppableDayCellProps {
   day: Date;
-  shifts: Shift[];
-  employees: Employee[];
-  formatTime: (date: string) => string;
-  getEmployeeName: (id: number | null) => string;
-  onClearDay: () => void;
-  clearing: boolean;
+  dayIndex: number;
+  hour: number;
+  requirements: Requirement[];
+  weekStart: Date;
+  onRequirementClick: (req: Requirement) => void;
 }
 
-function DroppableDay({ day, shifts, employees, formatTime, getEmployeeName, onClearDay, clearing }: DroppableDayProps) {
+function DroppableDayCell({ day, dayIndex, hour, requirements, weekStart, onRequirementClick }: DroppableDayCellProps) {
   const { setNodeRef, isOver } = useDroppable({
-    id: `day-${day.toISOString()}`,
-    data: { day },
+    id: `day-${dayIndex}-hour-${hour}`,
+    data: { day, hour },
   });
 
   return (
     <div
       ref={setNodeRef}
-      className={`min-h-[400px] border-r border-gray-200 p-4 dark:border-gray-800 last:border-r-0 transition-colors ${
+      className={`h-[32px] border-r border-b border-gray-200 dark:border-gray-700 p-0.5 relative ${
         isOver ? "bg-blue-50 dark:bg-blue-900/10" : ""
       }`}
     >
-      {shifts.length === 0 ? (
-        <p className="text-xs text-gray-400 dark:text-gray-600 text-center mt-4">
-          Brak zmian
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {shifts.map((shift) => (
-            <DraggableShift
-              key={shift.id}
-              shift={shift}
-              employeeName={getEmployeeName(shift.employee_id)}
-              formatTime={formatTime}
-            />
-          ))}
-        </div>
-      )}
+      {/* Empty cell - requirements are rendered separately with row-span */}
     </div>
   );
 }
 
-// --- Main Page Component ---
-
 export default function SchedulePage() {
-  const [shifts, setShifts] = useState<Shift[]>([]);
+  const { user } = useAuth();
+  const organizationId = user?.organization_id;
+  const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [availabilities, setAvailabilities] = useState<Availability[]>([]);
   const [loading, setLoading] = useState(true);
-  const [autoAssigning, setAutoAssigning] = useState(false);
-  const [clearing, setClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [demandDialogOpen, setDemandDialogOpen] = useState(false);
   const [selectedWeekStart, setSelectedWeekStart] = useState<Date | null>(null);
-  const [activeDragShift, setActiveDragShift] = useState<Shift | null>(null);
+  const [editingRequirement, setEditingRequirement] = useState<Requirement | null>(null);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const { showToast, ToastComponent } = useToast();
 
-  // Hardcoded organization ID for MVP
-  const ORGANIZATION_ID = 1;
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
 
-  const fetchShifts = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await shiftsApi.getAll(ORGANIZATION_ID);
-      setShifts(data);
-    } catch (err) {
-      console.error("Error fetching shifts:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Nie udało się pobrać zmian. Spróbuj ponownie."
-      );
-    } finally {
-      setLoading(false);
-    }
+  // Calculate current week start (Monday)
+  const getCurrentWeekStart = useCallback((): Date => {
+    const now = new Date();
+    return startOfWeek(now, { weekStartsOn: 1 }); // 1 = Monday
   }, []);
 
-  const fetchEmployees = useCallback(async () => {
+  const weekStart = useMemo(() => {
+    return selectedWeekStart || getCurrentWeekStart();
+  }, [selectedWeekStart, getCurrentWeekStart]);
+
+  const weekDays = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  }, [weekStart]);
+
+  // Hours from 0 to 23
+  const hours = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
+
+  const fetchRequirements = useCallback(async () => {
+    if (!organizationId) return;
+    
     try {
-      const data = await employeesApi.getAll(ORGANIZATION_ID);
+      const data = await requirementsApi.getAll(organizationId);
+      // Filter for current week
+      const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+      const weekRequirements = data.filter(req => {
+        const reqWeekStart = req.week_start_date.includes('T')
+          ? req.week_start_date.split('T')[0]
+          : req.week_start_date;
+        return reqWeekStart === weekStartStr;
+      });
+      setRequirements(weekRequirements);
+    } catch (err) {
+      console.error("Error fetching requirements:", err);
+      setError("Nie udało się pobrać zapotrzebowania");
+      showToast("Nie udało się pobrać zapotrzebowania", "error");
+    }
+  }, [organizationId, weekStart, showToast]);
+
+  const fetchEmployees = useCallback(async () => {
+    if (!organizationId) return;
+    
+    try {
+      const data = await employeesApi.getAll(organizationId);
       setEmployees(data);
     } catch (err) {
       console.error("Error fetching employees:", err);
     }
-  }, []);
+  }, [organizationId]);
+
+  const fetchAvailabilities = useCallback(async () => {
+    try {
+      const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+      const weekEnd = addDays(weekStart, 7);
+      const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+
+      // Fetch availability for all employees for the week
+      const allAvailabilities: Availability[] = [];
+      for (const employee of employees) {
+        try {
+          const data = await availabilityApi.get(employee.id, weekStartStr, weekEndStr);
+          allAvailabilities.push(...data);
+        } catch (err) {
+          console.error(`Error fetching availability for employee ${employee.id}:`, err);
+        }
+      }
+      setAvailabilities(allAvailabilities);
+    } catch (err) {
+      console.error("Error fetching availabilities:", err);
+    }
+  }, [weekStart, employees]);
 
   useEffect(() => {
-    fetchShifts();
-    fetchEmployees();
-  }, [fetchShifts, fetchEmployees]);
+    const loadData = async () => {
+      setLoading(true);
+      setError(null);
+      await fetchEmployees();
+      setLoading(false);
+    };
+    loadData();
+  }, [fetchEmployees]);
 
-  // Calculate current week start (Monday) in UTC
-  const getCurrentWeekStart = useCallback((): Date => {
-    const now = new Date();
-    const year = now.getUTCFullYear();
-    const month = now.getUTCMonth();
-    const date = now.getUTCDate();
-    const dayOfWeek = now.getUTCDay();
-    const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    return new Date(Date.UTC(year, month, date - daysToMonday, 0, 0, 0, 0));
-  }, []);
-
-  // Initialize selected week
-  const weekStart = useMemo(() => {
-    if (selectedWeekStart) {
-      return selectedWeekStart;
+  useEffect(() => {
+    if (employees.length > 0) {
+      fetchRequirements();
+      fetchAvailabilities();
     }
-    if (shifts.length > 0 && !selectedWeekStart) {
-      const earliestShift = shifts.reduce((earliest, shift) => {
-        const shiftDate = parseISO(shift.start_time);
-        const earliestDate = parseISO(earliest.start_time);
-        return shiftDate < earliestDate ? shift : earliest;
-      });
-      const earliestDate = parseISO(earliestShift.start_time);
-      const year = earliestDate.getUTCFullYear();
-      const month = earliestDate.getUTCMonth();
-      const date = earliestDate.getUTCDate();
-      const dayOfWeek = earliestDate.getUTCDay();
-      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-      return new Date(Date.UTC(year, month, date - daysToMonday, 0, 0, 0, 0));
-    }
-    return getCurrentWeekStart();
-  }, [selectedWeekStart, shifts, getCurrentWeekStart]);
+  }, [weekStart, employees, fetchRequirements, fetchAvailabilities]);
 
   const handlePrevWeek = useCallback(() => {
-    const prevWeek = new Date(weekStart);
-    prevWeek.setUTCDate(prevWeek.getUTCDate() - 7);
-    setSelectedWeekStart(prevWeek);
+    setSelectedWeekStart(subWeeks(weekStart, 1));
   }, [weekStart]);
 
   const handleNextWeek = useCallback(() => {
-    const nextWeek = new Date(weekStart);
-    nextWeek.setUTCDate(nextWeek.getUTCDate() + 7);
-    setSelectedWeekStart(nextWeek);
+    setSelectedWeekStart(addWeeks(weekStart, 1));
   }, [weekStart]);
 
   const handleToday = useCallback(() => {
     setSelectedWeekStart(null);
   }, []);
 
-  const handleGenerateSchedule = useCallback(async () => {
-    try {
-      setAutoAssigning(true);
-      setError(null);
-      
-      // Convert weekStart to UTC ISO string (Monday 00:00:00)
-      const weekStartUTC = new Date(Date.UTC(
-        weekStart.getUTCFullYear(),
-        weekStart.getUTCMonth(),
-        weekStart.getUTCDate(),
-        0, 0, 0, 0
-      ));
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id.toString());
+  };
 
-      const result = await schedulesApi.generate(ORGANIZATION_ID, weekStartUTC.toISOString());
-      showToast(`Wygenerowano grafik z ${result.length} zmianami!`, "success");
-      await fetchShifts();
-    } catch (err) {
-      console.error("Error generating schedule:", err);
-      let errorMessage = "Nie udało się wygenerować grafiku. Upewnij się, że dodałeś zapotrzebowanie (Requirements) dla tego tygodnia.";
-      if (err instanceof ApiClientError) {
-        if (typeof err.data.detail === 'string') {
-          errorMessage = err.data.detail;
-        } else if (Array.isArray(err.data.detail)) {
-          errorMessage = err.data.detail.map((e) => `${e.loc.join('.')}: ${e.msg}`).join(', ');
-        }
-      } else if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      setError(errorMessage);
-      showToast(errorMessage, "error");
-    } finally {
-      setAutoAssigning(false);
-    }
-  }, [weekStart, fetchShifts, showToast]);
-
-  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
-
-  const handleClearDay = useCallback(async (dayIndex?: number) => {
-    const targetDay = dayIndex !== undefined ? weekDays[dayIndex] : null;
-    const confirmMessage = targetDay
-      ? `Czy na pewno chcesz usunąć wszystkie zmiany dla dnia ${format(targetDay, "EEEE, d MMM")}? Tej operacji nie można cofnąć.`
-      : "Czy na pewno chcesz usunąć wszystkie zmiany z tego tygodnia? Tej operacji nie można cofnąć.";
-    
-    if (!confirm(confirmMessage)) return;
-
-    try {
-      setClearing(true);
-      setError(null);
-      let startDateUTC: Date;
-      let endDateUTC: Date;
-
-      if (targetDay) {
-        startDateUTC = new Date(Date.UTC(
-          targetDay.getUTCFullYear(),
-          targetDay.getUTCMonth(),
-          targetDay.getUTCDate(),
-          0, 0, 0, 0
-        ));
-        endDateUTC = new Date(Date.UTC(
-          targetDay.getUTCFullYear(),
-          targetDay.getUTCMonth(),
-          targetDay.getUTCDate(),
-          23, 59, 59, 999
-        ));
-      } else {
-        startDateUTC = new Date(Date.UTC(
-          weekStart.getUTCFullYear(),
-          weekStart.getUTCMonth(),
-          weekStart.getUTCDate(),
-          0, 0, 0, 0
-        ));
-        endDateUTC = new Date(Date.UTC(
-          weekStart.getUTCFullYear(),
-          weekStart.getUTCMonth(),
-          weekStart.getUTCDate() + 6,
-          23, 59, 59, 999
-        ));
-      }
-
-      const requestData = {
-        start_date: startDateUTC.toISOString(),
-        end_date: endDateUTC.toISOString(),
-      };
-
-      await shiftsApi.deleteRange(ORGANIZATION_ID, requestData);
-      showToast(targetDay ? `Wyczyszczono zmiany dla dnia ${format(targetDay, "EEEE")}` : "Wyczyszczono zmiany z całego tygodnia", "success");
-      
-      setShifts(prev => prev.filter(shift => {
-        const shiftDate = parseISO(shift.start_time);
-        const shiftDateUTC = new Date(Date.UTC(shiftDate.getUTCFullYear(), shiftDate.getUTCMonth(), shiftDate.getUTCDate()));
-        const startUTC = new Date(Date.UTC(startDateUTC.getUTCFullYear(), startDateUTC.getUTCMonth(), startDateUTC.getUTCDate()));
-        const endUTC = new Date(Date.UTC(endDateUTC.getUTCFullYear(), endDateUTC.getUTCMonth(), endDateUTC.getUTCDate()));
-        return shiftDateUTC < startUTC || shiftDateUTC > endUTC;
-      }));
-      
-      setTimeout(() => fetchShifts().catch(console.error), 300);
-    } catch (err) {
-      console.error("Error clearing shifts:", err);
-      setError("Nie udało się wyczyścić zmian.");
-      showToast("Nie udało się wyczyścić zmian.", "error");
-      fetchShifts();
-    } finally {
-      setClearing(false);
-    }
-  }, [weekStart, weekDays, fetchShifts, showToast]);
-
-  const getEmployeeName = useCallback((employeeId: number | null): string => {
-    if (employeeId === null) return "Wakat";
-    const employee = employees.find((emp) => emp.id === employeeId);
-    return employee ? `${employee.first_name} ${employee.last_name}` : `Pracownik #${employeeId}`;
-  }, [employees]);
-
-  const formatTime = useCallback((dateString: string): string => {
-    const date = parseISO(dateString);
-    const hours = String(date.getUTCHours()).padStart(2, '0');
-    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-    return `${hours}:${minutes}`;
-  }, []);
-
-  const availableRoles = useMemo(() => {
-    const roles = new Set(employees.map((emp) => emp.role));
-    return Array.from(roles).sort();
-  }, [employees]);
-
-  // DnD Handler
   const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveDragId(null);
     const { active, over } = event;
-    setActiveDragShift(null);
 
     if (!over) return;
 
-    const shiftId = parseInt(active.id.toString().replace("shift-", ""));
-    const targetDayIso = over.id.toString().replace("day-", "");
-    const targetDay = new Date(targetDayIso);
+    // Handle requirement drag
+    if (active.id.toString().startsWith('requirement-')) {
+      const requirementId = parseInt(active.id.toString().replace('requirement-', ''));
+      const requirement = requirements.find(r => r.id === requirementId);
+      if (!requirement) return;
 
-    const shift = shifts.find(s => s.id === shiftId);
-    if (!shift) return;
+      // Parse drop target (day-hour)
+      const overId = over.id.toString();
+      if (overId.startsWith('day-')) {
+        const match = overId.match(/day-(\d+)-hour-(\d+)/);
+        if (match) {
+          const dayIndex = parseInt(match[1]);
+          const newDay = weekDays[dayIndex];
+          const newDayOfWeek = getDayOfWeek(newDay);
 
-    // Calculate new times
-    const currentStart = parseISO(shift.start_time);
-    const currentEnd = parseISO(shift.end_time);
-    
-    // Check if day changed
-    const currentDayUTC = new Date(Date.UTC(currentStart.getUTCFullYear(), currentStart.getUTCMonth(), currentStart.getUTCDate()));
-    const targetDayUTC = new Date(Date.UTC(targetDay.getUTCFullYear(), targetDay.getUTCMonth(), targetDay.getUTCDate()));
-
-    if (currentDayUTC.getTime() === targetDayUTC.getTime()) {
-      return; // Dropped on same day, do nothing for now (reordering not implemented)
+          // Only update if day changed
+          if (requirement.day_of_week !== newDayOfWeek) {
+            try {
+              await requirementsApi.update(requirement.id, {
+                day_of_week: newDayOfWeek,
+              });
+              showToast("Zapotrzebowanie przeniesione", "success");
+              await fetchRequirements();
+            } catch (err) {
+              console.error("Error updating requirement:", err);
+              showToast("Nie udało się zaktualizować zapotrzebowania", "error");
+            }
+          }
+        }
+      }
     }
 
-    // Calculate new start/end times preserving hours/minutes
-    const newStart = new Date(targetDayUTC);
-    newStart.setUTCHours(currentStart.getUTCHours(), currentStart.getUTCMinutes(), 0, 0);
-    
-    const newEnd = new Date(targetDayUTC);
-    newEnd.setUTCHours(currentEnd.getUTCHours(), currentEnd.getUTCMinutes(), 0, 0);
-    
-    // Handle overnight shifts (end time on next day)
-    if (currentEnd.getUTCDate() !== currentStart.getUTCDate()) {
-       newEnd.setUTCDate(newEnd.getUTCDate() + 1);
-    }
+    // Handle availability drag to create shift
+    if (active.id.toString().startsWith('availability-')) {
+      const availabilityId = parseInt(active.id.toString().replace('availability-', ''));
+      const availability = availabilities.find(a => a.id === availabilityId);
+      if (!availability) return;
 
-    try {
-      // Optimistic update
-      const updatedShift = { ...shift, start_time: newStart.toISOString(), end_time: newEnd.toISOString() };
-      setShifts(prev => prev.map(s => s.id === shiftId ? updatedShift : s));
+      const overId = over.id.toString();
+      if (overId.startsWith('day-')) {
+        const match = overId.match(/day-(\d+)-hour-(\d+)/);
+        if (match) {
+          const dayIndex = parseInt(match[1]);
+          const hour = parseInt(match[2]);
+          const targetDay = weekDays[dayIndex];
 
-      await shiftsApi.update(shiftId, {
-        start_time: newStart.toISOString(),
-        end_time: newEnd.toISOString(),
-      });
-      
-      showToast("Przesunięto zmianę pomyślnie", "success");
-    } catch (err) {
-      console.error("Error moving shift:", err);
-      showToast("Nie udało się przesunąć zmiany", "error");
-      fetchShifts(); // Revert on error
+          // Find matching requirement for this day and hour
+          const dayOfWeek = getDayOfWeek(targetDay);
+          const matchingRequirement = requirements.find(req => {
+            if (req.day_of_week !== dayOfWeek) return false;
+            const reqStartHour = getHourFromTime(req.start_time);
+            const reqEndHour = getHourFromTime(req.end_time);
+            return reqStartHour <= hour && reqEndHour > hour;
+          });
+
+          if (!matchingRequirement) {
+            showToast("Brak zapotrzebowania dla tego czasu", "error");
+            return;
+          }
+
+          // Check if availability matches requirement time
+          const availStart = parseISO(availability.start_time);
+          const availEnd = parseISO(availability.end_time);
+          const reqStartTime = formatTimeString(matchingRequirement.start_time);
+          const reqEndTime = formatTimeString(matchingRequirement.end_time);
+
+          // Create shift from availability
+          try {
+            const targetDateStr = format(targetDay, 'yyyy-MM-dd');
+            const [reqStartHour, reqStartMin] = reqStartTime.split(':').map(Number);
+            const [reqEndHour, reqEndMin] = reqEndTime.split(':').map(Number);
+
+            const startDateTime = new Date(`${targetDateStr}T${String(reqStartHour).padStart(2, '0')}:${String(reqStartMin).padStart(2, '0')}:00Z`);
+            let endDateTime = new Date(`${targetDateStr}T${String(reqEndHour).padStart(2, '0')}:${String(reqEndMin).padStart(2, '0')}:00Z`);
+
+            // Handle overnight shifts
+            if (endDateTime <= startDateTime) {
+              endDateTime = addDays(endDateTime, 1);
+            }
+
+            // Use availability time if it's within requirement
+            const availStartHour = availStart.getUTCHours();
+            const availStartMin = availStart.getUTCMinutes();
+            const availEndHour = availEnd.getUTCHours();
+            const availEndMin = availEnd.getUTCMinutes();
+
+            const actualStart = new Date(startDateTime);
+            if (availStartHour > reqStartHour || (availStartHour === reqStartHour && availStartMin > reqStartMin)) {
+              actualStart.setUTCHours(availStartHour, availStartMin);
+            }
+
+            const actualEnd = new Date(endDateTime);
+            if (availEndHour < reqEndHour || (availEndHour === reqEndHour && availEndMin < reqEndMin)) {
+              actualEnd.setUTCHours(availEndHour, availEndMin);
+            }
+
+            // Create shift
+            if (!organizationId) {
+              showToast("Brak przypisania do zespołu", "error");
+              return;
+            }
+            
+            const createdShifts = await shiftsApi.createDemand(organizationId, {
+              start_time: actualStart.toISOString(),
+              end_time: actualEnd.toISOString(),
+              role: matchingRequirement.position_name,
+              count: 1,
+            });
+
+            if (createdShifts.length === 0) {
+              throw new Error("Failed to create shift");
+            }
+
+            const openShift = createdShifts[0];
+            await shiftsApi.update(openShift.id, {
+              employee_id: availability.employee_id,
+            });
+
+            showToast("Przypisano pracownika do zmiany", "success");
+            // Refresh data
+            await fetchRequirements();
+          } catch (err) {
+            console.error("Error creating shift:", err);
+            showToast("Nie udało się utworzyć zmiany", "error");
+          }
+        }
+      }
     }
   };
 
-  const handleDragStart = (event: any) => {
-    const shiftId = parseInt(event.active.id.toString().replace("shift-", ""));
-    const shift = shifts.find(s => s.id === shiftId);
-    if (shift) setActiveDragShift(shift);
+  const handleRequirementClick = (req: Requirement) => {
+    setEditingRequirement(req);
   };
+
+  const handleRequirementSaved = async () => {
+    setEditingRequirement(null);
+    await fetchRequirements();
+    showToast("Zapotrzebowanie zaktualizowane", "success");
+  };
+
+  const handleRequirementDeleted = async () => {
+    setEditingRequirement(null);
+    await fetchRequirements();
+    showToast("Zapotrzebowanie usunięte", "success");
+  };
+
+  if (!organizationId) {
+    return (
+      <AuthGuard>
+        <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+            <p className="text-sm font-medium text-red-800 dark:text-red-200">
+              Brak przypisania do zespołu. Skontaktuj się z administratorem.
+            </p>
+          </div>
+        </div>
+      </AuthGuard>
+    );
+  }
 
   return (
-    <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <AuthGuard>
+      <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">Grafik Pracy</h1>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Planuj zapotrzebowanie i automatycznie przydzielaj zmiany</p>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Ręczne zarządzanie grafikiem</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setDemandDialogOpen(true)} variant="outline">Dodaj Zapotrzebowanie</Button>
-          <Button onClick={() => handleClearDay()} disabled={clearing} variant="outline">
-            {clearing ? "Czyszczenie..." : "Wyczyść Tydzień"}
+          <Button onClick={() => setEditingRequirement({} as Requirement)} variant="outline">
+            <Plus className="h-4 w-4 mr-2" />
+            Dodaj Zapotrzebowanie
           </Button>
-          <Button onClick={handleGenerateSchedule} disabled={autoAssigning}>
-            {autoAssigning ? "Generowanie..." : "Generuj Grafik"}
+          <Button onClick={handlePrevWeek} variant="outline" size="sm">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="text-center min-w-[200px]">
+            <div className="text-sm font-medium text-gray-900 dark:text-gray-50">
+              {format(weekStart, "MMM d")} - {format(addDays(weekStart, 6), "MMM d, yyyy")}
+            </div>
+            <Button variant="ghost" size="sm" onClick={handleToday} className="text-xs text-gray-500 hover:text-gray-700">
+              Dzisiaj
+            </Button>
+          </div>
+          <Button onClick={handleNextWeek} variant="outline" size="sm">
+            <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
       </div>
-
-      <WeeklyDemandDialog
-        open={demandDialogOpen}
-        onOpenChange={setDemandDialogOpen}
-        onSuccess={async (newShifts) => {
-          if (newShifts && newShifts.length > 0) setShifts(prev => [...prev, ...newShifts]);
-          fetchShifts().catch(console.error);
-          showToast("Zapotrzebowanie utworzone pomyślnie!", "success");
-        }}
-        organizationId={ORGANIZATION_ID}
-        weekStartDate={weekStart}
-        availableRoles={availableRoles}
-      />
-
-      {ToastComponent}
 
       {error && (
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
@@ -425,106 +440,144 @@ export default function SchedulePage() {
         </div>
       )}
 
-      {loading && (
+      {loading ? (
         <div className="rounded-lg border border-gray-200 bg-white p-8 dark:border-gray-800 dark:bg-gray-900">
-          <div className="space-y-4">
-            <div className="h-4 w-3/4 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
-            <div className="h-4 w-1/2 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
-          </div>
+          <div className="text-center text-gray-500 dark:text-gray-400">Ładowanie...</div>
         </div>
-      )}
-
-      {!loading && (
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-            <Button variant="outline" size="sm" onClick={handlePrevWeek} className="flex items-center gap-1">
-              <ChevronLeft className="h-4 w-4" /> Poprzedni Tydzień
-            </Button>
-            <div className="text-center">
-              <div className="text-sm font-medium text-gray-900 dark:text-gray-50">
-                {format(weekStart, "MMM d")} - {format(addDays(weekStart, 6), "MMM d, yyyy")}
-              </div>
-              <Button variant="ghost" size="sm" onClick={handleToday} className="text-xs text-gray-500 hover:text-gray-700">
-                Wróć do obecnego tygodnia
-              </Button>
-            </div>
-            <Button variant="outline" size="sm" onClick={handleNextWeek} className="flex items-center gap-1">
-              Następny Tydzień <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-          
-          <DndContext onDragEnd={handleDragEnd} onDragStart={handleDragStart}>
-            <div className="overflow-x-auto">
-              <div className="min-w-full">
-                <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-800">
-                  {weekDays.map((day, idx) => (
-                    <div key={idx} className="border-r border-gray-200 p-4 text-center dark:border-gray-800 last:border-r-0">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-medium text-gray-500 dark:text-gray-400">{format(day, "EEE")}</div>
-                          <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-50">{format(day, "MMM d")}</div>
+      ) : (
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <div className="flex gap-4">
+            {/* Main Calendar Grid */}
+            <div className="flex-1 rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 overflow-hidden">
+              <div className="overflow-auto max-h-[calc(100vh-250px)]">
+                <div className="inline-block min-w-full relative">
+                  <div className="grid grid-cols-[50px_repeat(7,1fr)]">
+                    {/* Header row */}
+                    <div className="sticky top-0 z-20 bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700 p-1"></div>
+                    {weekDays.map((day, idx) => (
+                      <div
+                        key={idx}
+                        className="sticky top-0 z-20 bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700 p-1.5 text-center last:border-r-0"
+                      >
+                        <div className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                          {format(day, "EEE")}
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleClearDay(idx)}
-                          disabled={clearing}
-                          className="h-6 w-6 p-0 text-xs text-gray-400 hover:text-red-600"
-                          title={`Wyczyść ${format(day, "EEEE")}`}
-                        >
-                          ×
-                        </Button>
+                        <div className="text-xs font-semibold text-gray-900 dark:text-gray-50">
+                          {format(day, "d MMM")}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-7">
-                  {weekDays.map((day, dayIdx) => {
-                    // Filter shifts for this day
-                    const dayShifts = shifts.filter((shift) => {
-                      const shiftDate = parseISO(shift.start_time);
-                      const shiftDateUTC = new Date(Date.UTC(shiftDate.getUTCFullYear(), shiftDate.getUTCMonth(), shiftDate.getUTCDate()));
-                      const dayUTC = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
-                      return shiftDateUTC.getTime() === dayUTC.getTime();
-                    });
+                    ))}
                     
-                    return (
-                      <DroppableDay
-                        key={dayIdx}
-                        day={day}
-                        shifts={dayShifts}
-                        employees={employees}
-                        formatTime={formatTime}
-                        getEmployeeName={getEmployeeName}
-                        onClearDay={() => handleClearDay(dayIdx)}
-                        clearing={clearing}
-                      />
-                    );
+                    {/* Hour rows with cells */}
+                    {hours.map((hour) => (
+                      <div key={`hour-row-${hour}`} className="contents">
+                        <div
+                          className="sticky left-0 z-10 bg-white dark:bg-gray-900 border-r border-b border-gray-200 dark:border-gray-700 p-0.5 text-center"
+                        >
+                          <div className="text-[9px] font-medium text-gray-500 dark:text-gray-400 leading-tight">
+                            {String(hour).padStart(2, '0')}:00
+                          </div>
+                        </div>
+                        {weekDays.map((day, dayIdx) => (
+                          <DroppableDayCell
+                            key={`${hour}-${dayIdx}`}
+                            day={day}
+                            dayIndex={dayIdx}
+                            hour={hour}
+                            requirements={requirements}
+                            weekStart={weekStart}
+                            onRequirementClick={handleRequirementClick}
+                          />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Requirements overlay - positioned absolutely over the grid */}
+                  {weekDays.map((day, dayIdx) => {
+                    const dayOfWeek = getDayOfWeek(day);
+                    const dayRequirements = requirements.filter(req => req.day_of_week === dayOfWeek);
+                    
+                    return dayRequirements.map((req) => {
+                      const reqStartHour = getHourFromTime(req.start_time);
+                      const reqStartMinute = getMinuteFromTime(req.start_time);
+                      const reqEndHour = getHourFromTime(req.end_time);
+                      const reqEndMinute = getMinuteFromTime(req.end_time);
+                      
+                      const reqStartMinutes = reqStartHour * 60 + reqStartMinute;
+                      const reqEndMinutes = reqEndHour * 60 + reqEndMinute;
+                      const durationMinutes = reqEndMinutes - reqStartMinutes;
+                      const topOffset = (reqStartMinutes / 60) * 32; // 32px per hour
+                      const height = (durationMinutes / 60) * 32;
+                      
+                      // Calculate left position: 50px (hour column) + dayIdx * (100% / 7)
+                      const leftPercent = (100 / 7) * dayIdx;
+                      const leftOffset = `calc(50px + ${leftPercent}%)`;
+                      const width = `calc(${100 / 7}% - 4px)`;
+                      
+                      return (
+                        <div
+                          key={`req-${req.id}-day-${dayIdx}`}
+                          onClick={() => handleRequirementClick(req)}
+                          className="absolute rounded border-2 border-blue-400 bg-blue-100 dark:bg-blue-900/30 px-1.5 py-1 cursor-pointer hover:shadow-md transition-shadow z-20 flex flex-col justify-center pointer-events-auto"
+                          style={{
+                            top: `${topOffset + 33}px`, // +33 for header row (approx)
+                            left: leftOffset,
+                            width: width,
+                            height: `${Math.max(32, height)}px`,
+                          }}
+                        >
+                          <div className="text-[9px] font-semibold text-blue-900 dark:text-blue-200 truncate leading-tight">
+                            {req.position_name}
+                          </div>
+                          <div className="text-[8px] text-blue-700 dark:text-blue-300 leading-tight">
+                            {formatTimeString(req.start_time)}-{formatTimeString(req.end_time)} ({req.headcount})
+                          </div>
+                        </div>
+                      );
+                    });
                   })}
                 </div>
               </div>
             </div>
-            
-            <DragOverlay>
-              {activeDragShift ? (
-                 <div className={`rounded-md border p-2 mb-2 shadow-lg opacity-80 ${
-                    activeDragShift.employee_id !== null
-                      ? "border-blue-200 bg-blue-50"
-                      : "border-gray-300 bg-gray-100"
-                  }`}>
-                  <div className="text-xs font-medium">
-                    {activeDragShift.employee_id !== null ? getEmployeeName(activeDragShift.employee_id) : `${activeDragShift.role} - Wakat`}
-                  </div>
-                  <div className="mt-1 text-xs">
-                    {formatTime(activeDragShift.start_time)} - {formatTime(activeDragShift.end_time)}
-                  </div>
-                </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
-        </div>
+
+            {/* Availability Sidebar */}
+            <AvailabilitySidebar
+              employees={employees}
+              availabilities={availabilities}
+              weekStart={weekStart}
+            />
+          </div>
+
+          <DragOverlay>
+            {activeDragId?.startsWith('requirement-') ? (
+              <div className="rounded-md border-2 border-blue-400 bg-blue-100 dark:bg-blue-900/30 p-2 shadow-lg">
+                <div className="text-xs font-semibold text-blue-900 dark:text-blue-200">Zapotrzebowanie</div>
+              </div>
+            ) : activeDragId?.startsWith('availability-') ? (
+              <div className="rounded-md border-2 border-green-400 bg-green-100 dark:bg-green-900/30 p-2 shadow-lg">
+                <div className="text-xs font-semibold text-green-900 dark:text-green-200">Dyspozycyjność</div>
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
-    </div>
+
+      {editingRequirement && (
+        <EditRequirementDialog
+          requirement={editingRequirement}
+          open={!!editingRequirement}
+          onOpenChange={(open) => !open && setEditingRequirement(null)}
+          onSaved={handleRequirementSaved}
+          onDeleted={handleRequirementDeleted}
+          organizationId={organizationId!}
+          weekStart={weekStart}
+          availableRoles={Array.from(new Set(employees.map(e => e.role)))}
+        />
+      )}
+
+      {ToastComponent}
+      </div>
+    </AuthGuard>
   );
 }

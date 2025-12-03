@@ -24,4 +24,5 @@ class Organization(BaseModel):
     employees = relationship("Employee", back_populates="organization", cascade="all, delete-orphan")
     requirements = relationship("Requirements", back_populates="organization", cascade="all, delete-orphan")
     schedules = relationship("Schedule", back_populates="organization", cascade="all, delete-orphan")
+    invitations = relationship("Invitation", back_populates="organization", cascade="all, delete-orphan")
 

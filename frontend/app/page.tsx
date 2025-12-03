@@ -1,6 +1,28 @@
+'use client';
+
 import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [isAuthenticated, isLoading, router]);
+
+  if (isLoading || isAuthenticated) {
+    return (
+      <div className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center">
+        <p className="text-muted-foreground">Ładowanie...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center bg-background text-foreground">
       <main className="flex flex-col items-center justify-center px-4 text-center">
@@ -12,16 +34,16 @@ export default function Home() {
         </p>
         <div className="flex gap-4">
           <Link
-            href="/dashboard"
+            href="/login"
             className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-8 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
           >
-            Przejdź do Panelu
+            Zaloguj się
           </Link>
           <Link
-            href="/dashboard/schedule"
+            href="/register"
             className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-8 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
           >
-            Zobacz Grafik
+            Zarejestruj się
           </Link>
         </div>
       </main>

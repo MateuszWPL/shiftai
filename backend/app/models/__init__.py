@@ -8,6 +8,8 @@ from app.models.shift import Shift
 from app.models.schedule import Schedule
 from app.models.requirements import Requirements
 from app.models.swap_requests import SwapRequest, SwapStatus
+from app.models.invitation import Invitation, InvitationStatus
+from app.models.employee_invitation import EmployeeInvitation, EmployeeInvitationStatus
 
 __all__ = [
     "BaseModel",
@@ -22,4 +24,8 @@ __all__ = [
     "Requirements",
     "SwapRequest",
     "SwapStatus",
+    "Invitation",
+    "InvitationStatus",
+    "EmployeeInvitation",
+    "EmployeeInvitationStatus",
 ]

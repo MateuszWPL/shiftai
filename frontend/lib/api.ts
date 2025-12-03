@@ -4,6 +4,7 @@
  */
 
 const API_BASE_URL = 'http://127.0.0.1:8000/api/v1';
+const TOKEN_KEY = 'antigravity_auth_token';
 
 export interface ApiError {
   detail: string | Array<{ loc: string[]; msg: string; type: string }>;
@@ -21,6 +22,24 @@ export class ApiClientError extends Error {
 }
 
 /**
+ * Token management
+ */
+export function getToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function removeToken(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+/**
  * Generic fetch wrapper with error handling
  */
 async function apiFetch<T>(
@@ -28,13 +47,20 @@ async function apiFetch<T>(
   options?: RequestInit
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
+  const token = getToken();
+  
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...options?.headers,
+  };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   
   const response = await fetch(url, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -153,9 +179,43 @@ export interface GenerateScheduleRequest {
 }
 
 // API endpoints
+export interface EmployeeInvitation {
+  id: number;
+  employee_id: number;
+  token: string;
+  status: 'pending' | 'accepted' | 'expired';
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+  invitation_url: string;
+}
+
+export interface EmployeeInvitationAccept {
+  token: string;
+  password: string;
+}
+
 export const employeesApi = {
   getAll: (orgId: number) => apiGet<Employee[]>(`/employees/${orgId}`),
   create: (data: unknown) => apiPost<Employee>('/employees/', data),
+  invite: (employeeId: number) => apiPost<EmployeeInvitation>(`/employees/${employeeId}/invite`, {}),
+  getInvitation: (employeeId: number) => apiGet<EmployeeInvitation>(`/employees/${employeeId}/invitation`),
+  acceptInvitation: (data: EmployeeInvitationAccept) => apiPost<UserWithToken>('/employees/invitations/accept', data),
+  getMyProfile: () => apiGet<Employee>('/employees/me'),
+  getMyShifts: (startDate?: string, endDate?: string) => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    const query = params.toString();
+    return apiGet<any[]>(`/employees/me/shifts${query ? `?${query}` : ''}`);
+  },
+  getMyAvailability: (startDate?: string, endDate?: string) => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    const query = params.toString();
+    return apiGet<Availability[]>(`/employees/me/availability${query ? `?${query}` : ''}`);
+  },
 };
 
 export const availabilityApi = {
@@ -290,6 +350,69 @@ export const requirementsApi = {
     return apiGet<Requirement[]>(`/requirements/?${params.toString()}`);
   },
   create: (data: RequirementCreate) => apiPost<Requirement>('/requirements/', data),
+  update: (requirementId: number, data: Partial<RequirementCreate>) => apiPut<Requirement>(`/requirements/${requirementId}`, data),
   delete: (requirementId: number) => apiDelete<void>(`/requirements/${requirementId}`),
+};
+
+// Type definitions for Auth
+export interface User {
+  id: number;
+  email: string;
+  full_name: string | null;
+  role: 'owner' | 'manager' | 'employee';
+  organization_id: number | null;
+}
+
+export interface UserWithToken extends User {
+  access_token: string;
+  token_type: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  full_name: string;
+  organization_name: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export const authApi = {
+  register: (data: RegisterRequest) => apiPost<UserWithToken>('/auth/register', data),
+  login: (data: LoginRequest) => apiPost<UserWithToken>('/auth/login', data),
+  me: () => apiGet<User>('/auth/me'),
+};
+
+export const usersApi = {
+  getOrganizationUsers: () => apiGet<User[]>('/users/organization'),
+};
+
+// Type definitions for Invitations
+export interface Invitation {
+  id: number;
+  email: string;
+  organization_id: number;
+  status: 'pending' | 'accepted' | 'expired';
+  expires_at: string;
+  created_at: string;
+}
+
+export interface InvitationCreate {
+  email: string;
+  full_name: string;
+}
+
+export interface InvitationAccept {
+  token: string;
+  password: string;
+}
+
+export const invitationsApi = {
+  list: () => apiGet<Invitation[]>('/invitations/'),
+  create: (data: InvitationCreate) => apiPost<Invitation>('/invitations/', data),
+  accept: (data: InvitationAccept) => apiPost<UserWithToken>('/invitations/accept', data),
 };
 

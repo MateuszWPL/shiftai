@@ -32,6 +32,7 @@ class EmployeeResponse(BaseModel):
     max_hours_per_week: int
     role: str
     organization_id: int
+    user_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     

@@ -32,6 +32,26 @@ class RequirementCreate(BaseModel):
         return self
 
 
+class RequirementUpdate(BaseModel):
+    """Schema for updating a requirement."""
+    
+    week_start_date: Optional[date] = None
+    day_of_week: Optional[int] = Field(None, ge=0, le=6, description="Day of week (0=Monday, 6=Sunday)")
+    position_name: Optional[str] = Field(None, min_length=1, max_length=100, description="Position name")
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    headcount: Optional[int] = Field(None, gt=0, description="Number of people needed")
+    
+    model_config = ConfigDict(from_attributes=True)
+    
+    @model_validator(mode='after')
+    def validate_time_range(self) -> 'RequirementUpdate':
+        """Validate that end_time is after start_time if both are provided."""
+        if self.start_time and self.end_time and self.end_time <= self.start_time:
+            raise ValueError("end_time must be after start_time")
+        return self
+
+
 class RequirementResponse(BaseModel):
     """Schema for requirement response."""
     
